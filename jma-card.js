@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.57.0";
+const VERSION = "0.58.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4381,6 +4381,54 @@ class JmaScreensaverCard extends HTMLElement {
   _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); clearInterval(this._gTimer); clearInterval(this._fcTimer); this._idle = 0; this._actWrap = null; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
 jmaDef("jma-screensaver-card", JmaScreensaverCard);
+// =============================================================================
+//  🧭 NAV — dock flottant de navigation entre vues
+// =============================================================================
+class JmaNavCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; this._items = c.items || []; }
+  getCardSize() { return 0; }
+  static getStubConfig() { return { items: [{ name: "Accueil", icon: "mdi:home", path: "/jma-tablette/accueil" }] }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._highlight(); }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .navdock{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1000;
+        display:flex;gap:3px;padding:6px;border-radius:24px;
+        background:rgba(250,247,240,.86);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);
+        box-shadow:0 10px 34px rgba(60,48,30,.22);border:1px solid rgba(120,100,70,.12);}
+      :host(.dark) .navdock{background:rgba(26,26,30,.82);border-color:rgba(255,255,255,.08);box-shadow:0 10px 34px rgba(0,0,0,.5);}
+      .navbtn{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:62px;padding:8px 13px;border:none;border-radius:18px;
+        background:transparent;color:#6a5e49;cursor:pointer;font-size:.66rem;font-weight:800;letter-spacing:.2px;transition:transform .1s,background .2s,color .2s;}
+      :host(.dark) .navbtn{color:#cbb89a;}
+      .navbtn ha-icon{--mdc-icon-size:24px;}
+      .navbtn:active{transform:scale(.92);}
+      .navbtn.on{background:linear-gradient(135deg,#f3d9b8,#e8c89a);color:#42382a;box-shadow:0 3px 10px rgba(180,140,90,.3);}
+      :host(.dark) .navbtn.on{background:var(--jma-grad);color:var(--jma-dark);}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="navdock" id="dock"></div></ha-card>`;
+    const dock = this.shadowRoot.getElementById("dock");
+    this._items.forEach((it) => {
+      const b = document.createElement("button"); b.className = "navbtn"; b.dataset.path = it.path || "";
+      b.innerHTML = `<ha-icon icon="${it.icon || "mdi:circle"}"></ha-icon><span>${it.name || ""}</span>`;
+      b.addEventListener("click", () => this._go(it.path));
+      dock.appendChild(b);
+    });
+    this._onLoc = () => this._highlight();
+    window.addEventListener("location-changed", this._onLoc);
+    window.addEventListener("popstate", this._onLoc);
+  }
+  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } }
+  _go(path) { if (!path) return; history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed")); }
+  _highlight() {
+    const p = (window.location && window.location.pathname) || "";
+    this.shadowRoot.querySelectorAll(".navbtn").forEach((b) => {
+      const seg = (b.dataset.path || "").split("/").filter(Boolean).pop() || "\0";
+      b.classList.toggle("on", p === b.dataset.path || p.endsWith("/" + seg));
+    });
+  }
+}
+jmaDef("jma-nav-card", JmaNavCard);
 
 // =============================================================================
 //  🪟 TOUS LES VOLETS  /  🌡️ TOUS LES THERMOSTATS (tuile + pop-up groupé)
@@ -4501,6 +4549,7 @@ REG("jma-screensaver-card", "JMA Mode veille", "Économiseur d'écran horloge po
 REG("jma-covers-card", "JMA Tous les volets", "Tuile + pop-up de tous les volets.");
 REG("jma-climates-card", "JMA Tous les thermostats", "Tuile + pop-up de tous les thermostats.");
 REG("jma-lights-card", "JMA Toutes les lumières", "Tuile + pop-up groupé des lumières.");
+REG("jma-nav-card", "JMA Navigation", "Dock flottant pour naviguer entre les vues.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
