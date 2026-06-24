@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.37.2";
+const VERSION = "0.38.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3704,69 +3704,69 @@ class JmaScreensaverCard extends HTMLElement {
   _show() {
     if (this._shown) return; this._shown = true;
     const o = document.createElement("div");
-    o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:radial-gradient(125% 120% at 50% 10%,#141826 0%,#080a11 58%,#000 100%);color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .7s ease;";
+    o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:radial-gradient(125% 120% at 50% 12%,#141826 0%,#080a11 60%,#000 100%);color:#fff;opacity:0;transition:opacity .7s ease;";
     const st = document.createElement("style");
     st.textContent = `
-      .ss-col{text-align:center;transition:transform 2.5s ease;display:flex;flex-direction:column;align-items:center;gap:1vh;max-width:94vw;}
-      .ss-time{font-weight:200;font-size:14vw;line-height:.9;letter-spacing:-.6vw;text-shadow:0 0 9vw rgba(123,162,255,.14);}
-      .ss-date{font-size:2.6vw;opacity:.5;text-transform:capitalize;letter-spacing:.25vw;margin-top:-.4vh;}
-      .ss-wx{display:inline-flex;gap:1.1vw;align-items:center;font-size:2.6vw;opacity:.78;}
-      .ss-wx ha-icon{--mdc-icon-size:3.1vw;}
-      .ss-sep{width:30vw;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);margin:.7vh 0 .9vh;}
-      .ss-edom{display:inline-flex;align-items:center;gap:1vw;font-size:2.5vw;font-weight:800;letter-spacing:.04vw;}
-      .ss-edom ha-icon{--mdc-icon-size:3vw;}
+      .ss-wrap{position:absolute;inset:0;transition:transform 2.5s ease;}
+      .ss-clock{position:absolute;top:3.6vh;left:3.4vw;text-align:left;}
+      .ss-time{font-weight:200;font-size:8vw;line-height:.92;letter-spacing:-.3vw;opacity:.88;}
+      .ss-date{font-size:1.6vw;opacity:.32;text-transform:capitalize;letter-spacing:.14vw;margin-top:.4vh;}
+      .ss-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:1.6vh;}
+      .ss-edom{display:inline-flex;align-items:center;gap:1.1vw;font-size:2.7vw;font-weight:800;letter-spacing:.04vw;}
+      .ss-edom ha-icon{--mdc-icon-size:3.2vw;}
       .ss-edom.sun{color:#f7b6cb;}.ss-edom.bolt{color:#8fb4ff;}
-      .ss-energy{display:flex;gap:1.6vw;flex-wrap:wrap;justify-content:center;margin-top:.3vh;}
-      .ss-pill{display:inline-flex;align-items:center;gap:1vw;padding:.9vh 2.4vw;border-radius:99px;background:rgba(255,255,255,.05);
-        border:1px solid rgba(255,255,255,.06);font-size:2.6vw;font-weight:600;opacity:.62;transition:all .4s ease;}
-      .ss-pill ha-icon{--mdc-icon-size:3vw;}
+      .ss-energy{display:flex;gap:2vw;flex-wrap:wrap;justify-content:center;}
+      .ss-pill{display:inline-flex;align-items:center;gap:1.1vw;padding:1.2vh 3vw;border-radius:99px;background:rgba(255,255,255,.05);
+        border:1px solid rgba(255,255,255,.06);font-size:3.1vw;font-weight:700;opacity:.6;transition:all .4s ease;}
+      .ss-pill ha-icon{--mdc-icon-size:3.5vw;}
       .ss-pill.sun{color:#f7b6cb;}.ss-pill.bolt{color:#8fb4ff;}
-      .ss-pill.dom{opacity:1;transform:scale(1.08);font-weight:800;}
-      .ss-pill.sun.dom{background:rgba(248,165,194,.16);border-color:rgba(248,165,194,.5);box-shadow:0 0 5vw rgba(248,165,194,.22);}
-      .ss-pill.bolt.dom{background:rgba(91,155,255,.16);border-color:rgba(91,155,255,.5);box-shadow:0 0 5vw rgba(91,155,255,.22);}
-      .ss-agenda{position:absolute;left:2.6vw;bottom:2.8vh;display:flex;flex-direction:column;gap:.7vh;width:33vw;max-width:44vw;z-index:2;}
-      .ss-ev{display:flex;align-items:center;gap:1.2vw;background:linear-gradient(100deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
-        border:1px solid rgba(255,255,255,.07);border-radius:1.2vw;padding:.7vh 1.2vw;text-align:left;}
-      .ss-ev .day{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:5.4vw;height:4.8vw;line-height:1;flex:none;
-        background:rgba(248,165,194,.14);border-radius:.9vw;}
-      .ss-ev .day .dn{font-size:.92vw;font-weight:700;color:#f7b6cb;text-transform:uppercase;letter-spacing:.08vw;}
-      .ss-ev .day .dd{font-size:1.9vw;font-weight:800;margin-top:.1vh;}
+      .ss-pill.dom{opacity:1;transform:scale(1.1);}
+      .ss-pill.sun.dom{background:rgba(248,165,194,.16);border-color:rgba(248,165,194,.5);box-shadow:0 0 6vw rgba(248,165,194,.25);}
+      .ss-pill.bolt.dom{background:rgba(91,155,255,.16);border-color:rgba(91,155,255,.5);box-shadow:0 0 6vw rgba(91,155,255,.25);}
+      .ss-wx2{position:absolute;bottom:3vh;right:3vw;display:flex;align-items:center;gap:1.6vw;background:rgba(255,255,255,.05);
+        border:1px solid rgba(255,255,255,.07);border-radius:2vw;padding:1.3vh 2.4vw;}
+      .ss-wx2 ha-icon{--mdc-icon-size:5.2vw;color:#cfe0ff;}
+      .ss-wx2 .wt{font-size:4.2vw;font-weight:300;line-height:1;}
+      .ss-wx2 .wd{font-size:1.4vw;opacity:.55;text-transform:capitalize;}
+      .ss-agenda{position:absolute;left:3vw;bottom:3vh;display:flex;flex-direction:column;gap:.6vh;width:29vw;max-width:40vw;}
+      .ss-ev{display:flex;align-items:center;gap:1vw;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);border-radius:1vw;padding:.5vh 1vw;}
+      .ss-ev .day{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:4.6vw;height:4.2vw;line-height:1;flex:none;
+        background:rgba(248,165,194,.14);border-radius:.7vw;}
+      .ss-ev .day .dn{font-size:.78vw;font-weight:700;color:#f7b6cb;text-transform:uppercase;letter-spacing:.05vw;}
+      .ss-ev .day .dd{font-size:1.6vw;font-weight:800;}
       .ss-ev .info{display:flex;flex-direction:column;min-width:0;flex:1;}
-      .ss-ev .info .ti{font-size:1.4vw;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-      .ss-ev .info .hr{font-size:1.05vw;opacity:.5;display:inline-flex;align-items:center;gap:.5vw;}
-      .ss-empty{font-size:1.4vw;opacity:.4;}
-      .ss-actions{position:absolute;top:3.2vh;right:3vw;display:flex;flex-direction:column;gap:1.3vh;align-items:flex-end;}
-      .ss-act{display:inline-flex;align-items:center;gap:1vw;padding:1.3vh 2.2vw;border-radius:99px;cursor:pointer;
-        background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#fff;font-size:1.9vw;font-weight:700;transition:transform .1s,background .3s,border-color .3s;}
-      .ss-act ha-icon{--mdc-icon-size:2.5vw;color:#f7b6cb;transition:color .3s;}
+      .ss-ev .info .ti{font-size:1.2vw;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ss-ev .info .hr{font-size:.92vw;opacity:.5;}
+      .ss-actions{position:absolute;top:3.2vh;right:3vw;display:flex;flex-direction:column;gap:1.2vh;align-items:flex-end;z-index:4;}
+      .ss-act{display:inline-flex;align-items:center;gap:1vw;padding:1.2vh 2.2vw;border-radius:99px;cursor:pointer;
+        background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#fff;font-size:1.8vw;font-weight:700;transition:transform .1s,background .3s,border-color .3s;}
+      .ss-act ha-icon{--mdc-icon-size:2.4vw;color:#f7b6cb;transition:color .3s;}
       .ss-act:active{transform:scale(.94);}
       .ss-act.done{background:rgba(120,220,150,.22);border-color:rgba(120,220,150,.5);}
       .ss-act.done ha-icon{color:#7fe0a0;}
     `;
-    const col = document.createElement("div"); col.className = "ss-col";
-    col.innerHTML = `<div class="ss-time" id="jct">--:--</div>` +
-      (this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : "") +
-      `<div class="ss-wx" id="jcw"></div>` +
-      `<div class="ss-sep" id="jcsep" style="display:none"></div>` +
-      `<div class="ss-edom" id="jcedom" style="display:none"></div>` +
-      `<div class="ss-energy" id="jce"></div>`;
-    const ag = document.createElement("div"); ag.className = "ss-agenda"; ag.id = "jca";
-    o.appendChild(st); o.appendChild(col); o.appendChild(ag);
+    const wrap = document.createElement("div"); wrap.className = "ss-wrap";
+    wrap.innerHTML =
+      `<div class="ss-clock"><div class="ss-time" id="jct">--:--</div>${this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : ""}</div>` +
+      `<div class="ss-center"><div class="ss-edom" id="jcedom" style="display:none"></div><div class="ss-energy" id="jce"></div></div>` +
+      `<div class="ss-wx2" id="jcw" style="display:none"></div>` +
+      `<div class="ss-agenda" id="jca"></div>`;
+    o.appendChild(st); o.appendChild(wrap);
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
     // boutons d'action (haut-droite) : ne ferment PAS la veille
     const actions = this._config.actions || [];
     if (actions.length) {
-      const wrap = document.createElement("div"); wrap.className = "ss-actions";
-      ["pointerdown", "touchstart", "click"].forEach((ev) => wrap.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+      const aw = document.createElement("div"); aw.className = "ss-actions";
+      ["pointerdown", "touchstart", "click"].forEach((ev) => aw.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
       actions.forEach((a) => {
         const b = document.createElement("button"); b.className = "ss-act";
         b.innerHTML = `<ha-icon icon="${a.icon || "mdi:gesture-tap-button"}"></ha-icon><span>${a.name || ""}</span>`;
         b.addEventListener("click", (e) => { e.stopPropagation(); this._runAction(a, b); });
-        wrap.appendChild(b);
+        aw.appendChild(b);
       });
-      o.appendChild(wrap); this._actWrap = wrap;
+      o.appendChild(aw); this._actWrap = aw;
     }
-    document.body.appendChild(o); this._ovl = o; this._clkEl = col;
+    document.body.appendChild(o); this._ovl = o; this._clkEl = wrap;
     if (window.requestAnimationFrame) requestAnimationFrame(() => { o.style.opacity = "1"; }); else o.style.opacity = "1";
     this._paint(); this._clk = setInterval(() => this._paint(), 1000);
     this._shiftTimer = setInterval(() => this._shiftClock(), 60000);
@@ -3791,7 +3791,15 @@ class JmaScreensaverCard extends HTMLElement {
     const ct = this._ovl.querySelector("#jct"); if (ct) ct.textContent = hh + ":" + mm;
     const cd = this._ovl.querySelector("#jcd"); if (cd) cd.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     const cw = this._ovl.querySelector("#jcw"); const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
-    if (cw && w) { const t = w.attributes.temperature; cw.innerHTML = `<ha-icon icon="${(typeof WEATHER_ICON !== "undefined" && WEATHER_ICON[w.state]) || "mdi:weather-partly-cloudy"}"></ha-icon>${t != null ? Math.round(t) + "°" : ""}`; }
+    if (cw) {
+      if (w) {
+        const WXFR = { "clear-night": "Nuit claire", cloudy: "Nuageux", fog: "Brouillard", hail: "Grêle", lightning: "Orage", "lightning-rainy": "Orageux", partlycloudy: "Éclaircies", pouring: "Pluie forte", rainy: "Pluvieux", snowy: "Neige", "snowy-rainy": "Neige/pluie", sunny: "Ensoleillé", windy: "Venteux", "windy-variant": "Venteux", exceptional: "Exceptionnel" };
+        const t = w.attributes.temperature;
+        cw.innerHTML = `<ha-icon icon="${(typeof WEATHER_ICON !== "undefined" && WEATHER_ICON[w.state]) || "mdi:weather-partly-cloudy"}"></ha-icon>` +
+          `<div><div class="wt">${t != null ? Math.round(t) + "°" : "—"}</div><div class="wd">${WXFR[w.state] || w.state}</div></div>`;
+        cw.style.display = "flex";
+      } else cw.style.display = "none";
+    }
     // solaire vs EDF, dominance mise en valeur
     const ce = this._ovl.querySelector("#jce"); const dom = this._ovl.querySelector("#jcedom");
     if (ce) {
@@ -3810,8 +3818,6 @@ class JmaScreensaverCard extends HTMLElement {
           dom.style.display = "inline-flex";
         } else dom.style.display = "none";
       }
-      const sep = this._ovl.querySelector("#jcsep");
-      if (sep) sep.style.display = (haveSol || haveGrid) ? "block" : "none";
     }
   }
   async _fetchAgenda() {
@@ -3821,7 +3827,7 @@ class JmaScreensaverCard extends HTMLElement {
     try { for (const cal of this._cals) { const r = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(iso(start))}&end=${encodeURIComponent(iso(end))}`); (r || []).forEach((e) => evs.push(e)); } } catch (e) {}
     const now = Date.now();
     this._events = evs.map((e) => { const s = e.start && (e.start.dateTime || e.start.date); return { d: new Date(s), allday: !(e.start && e.start.dateTime), t: e.summary || e.message || "(sans titre)" }; })
-      .filter((x) => !isNaN(x.d) && x.d.getTime() > now - 3600000).sort((a, b) => a.d - b.d).slice(0, 5);
+      .filter((x) => !isNaN(x.d) && x.d.getTime() > now - 3600000).sort((a, b) => a.d - b.d).slice(0, 4);
     this._renderAgenda();
   }
   _renderAgenda() {
