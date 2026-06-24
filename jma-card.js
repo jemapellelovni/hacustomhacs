@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.20.0";
+const VERSION = "0.21.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1157,6 +1157,25 @@ class JmaPopup extends HTMLElement {
         .kpk{height:52px;border:none;border-radius:14px;background:rgba(255,255,255,.08);color:#fff;font-size:1.3rem;
           font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,background .2s;}
         .kpk:active{transform:scale(.93);background:rgba(248,165,194,.22);} .kpk ha-icon{--mdc-icon-size:24px;}
+        .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:1;background:rgba(255,255,255,.14);touch-action:none;cursor:pointer;}
+        .slider[hidden]{display:none;}
+        .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;background:linear-gradient(90deg,var(--jma-beige),var(--jma-rose));transition:width .28s;}
+        .slider.dragging .sfill{transition:none;}
+        .sval{position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;font-weight:700;font-size:.76rem;}
+        .sicon{position:absolute;right:9px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;--mdc-icon-size:16px;color:rgba(255,255,255,.85);}
+        .favs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;}
+        .fav{flex:none;display:flex;align-items:center;gap:5px;padding:7px 11px;border-radius:11px;border:none;cursor:pointer;background:rgba(255,255,255,.08);color:#fff;font-size:.78rem;font-weight:600;white-space:nowrap;max-width:160px;}
+        .fav ha-icon{--mdc-icon-size:16px;color:var(--jma-rose);flex:none;} .fav span{overflow:hidden;text-overflow:ellipsis;}
+        .ga{display:flex;gap:8px;}
+        .gab{flex:1;height:36px;border:none;border-radius:12px;cursor:pointer;background:rgba(255,255,255,.08);color:#fff;font-size:.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:5px;}
+        .gab ha-icon{--mdc-icon-size:17px;}
+        .shrep{display:flex;justify-content:center;gap:28px;margin:2px 0;}
+        .shb{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.55);} .shb.on{color:var(--jma-rose);} .shb ha-icon{--mdc-icon-size:22px;}
+        .sroom{display:flex;align-items:center;gap:8px;margin:7px 0;}
+        .slk,.smute{width:32px;height:32px;border-radius:9px;border:none;cursor:pointer;flex:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;}
+        .slk.on{background:var(--jma-rose);color:var(--jma-dark);} .slk.master{background:var(--jma-beige);color:var(--jma-dark);}
+        .smute.on{color:#ff5252;} .slk ha-icon,.smute ha-icon{--mdc-icon-size:18px;}
+        .srn{font-size:.8rem;font-weight:600;width:80px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .chiprow{display:flex;gap:6px;flex-wrap:wrap;}
         .pchip{padding:7px 11px;border-radius:11px;background:rgba(255,255,255,.1);border:none;color:#fff;cursor:pointer;font-size:.8rem;text-transform:capitalize;}
         .pchip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
@@ -1208,6 +1227,15 @@ class JmaPopup extends HTMLElement {
       this.shadowRoot.getElementById("hi").setAttribute("icon", "mdi:calendar-month");
       return;
     }
+    if (this._kind() === "sonos") {
+      const m = this._sonosMaster(), ms = m && this._hass.states[m];
+      const a = ms ? ms.attributes : {};
+      this.shadowRoot.getElementById("ht").textContent = this._config.name || "Sonos";
+      this.shadowRoot.getElementById("hs").textContent = a.media_title ? a.media_title + (a.media_artist ? " — " + a.media_artist : "") : (ms && ["playing", "paused"].includes(ms.state) ? ms.state : "À l'arrêt");
+      this.shadowRoot.getElementById("hi").setAttribute("icon", "mdi:speaker-multiple");
+      this._sonosTick();
+      return;
+    }
     if (this._kind() === "ev" || this._kind() === "energy") {
       const ev = this._kind() === "ev";
       this.shadowRoot.getElementById("ht").textContent = ev ? (this._config.name || "Voiture") : (this._config.title || "Énergie");
@@ -1252,6 +1280,7 @@ class JmaPopup extends HTMLElement {
     if (this._kind() === "ev") return this._evBody(body);
     if (this._kind() === "energy") return this._energyBody(body);
     if (this._kind() === "agenda") return this._agendaBody(body);
+    if (this._kind() === "sonos") return this._sonosBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -1577,6 +1606,100 @@ class JmaPopup extends HTMLElement {
       });
       list.innerHTML = html;
     } catch (err) { list.innerHTML = `<div style="opacity:.55;">Agenda indisponible</div>`; }
+  }
+  // ---- Sonos (pop-up complet) ----
+  _spkList() { return this._config.speakers || this._config.entities || []; }
+  _mp(s, d) { this._call("media_player", s, d); }
+  _sonosMaster() {
+    if (this._config.master && this._hass.states[this._config.master]) return this._config.master;
+    let best = null, score = -1;
+    this._spkList().forEach((eid) => {
+      const s = this._hass.states[eid]; if (!s) return;
+      const n = (s.attributes.group_members || [eid]).length;
+      const sc = n * 10 + (s.state === "playing" ? 5 : s.state === "paused" ? 2 : 0);
+      if (sc > score) { score = sc; best = eid; }
+    });
+    return best || this._spkList()[0];
+  }
+  _browse(ent, type, id) { return this._hass.callWS({ type: "media_player/browse_media", entity_id: ent, media_content_type: type, media_content_id: id }); }
+  _sonosBody(body) {
+    this._sSliders = {};
+    body.innerHTML = "";
+    // favoris
+    const favRow = document.createElement("div"); favRow.className = "row";
+    favRow.innerHTML = `<div class="lbl"><span>Favoris</span></div><div class="favs" id="favs"><span style="opacity:.5;font-size:.78rem;">chargement…</span></div>`;
+    body.appendChild(favRow);
+    if (this._config.favorites !== false) this._loadFavoritesPopup();
+    else this.shadowRoot.getElementById("favs").innerHTML = "";
+    // shuffle / repeat
+    const sr = document.createElement("div"); sr.className = "row shrep";
+    sr.innerHTML = `<button class="shb" id="shuffle"><ha-icon icon="mdi:shuffle"></ha-icon></button>
+      <button class="shb" id="repeat"><ha-icon class="ri" icon="mdi:repeat"></ha-icon></button>`;
+    sr.querySelector("#shuffle").addEventListener("click", () => { const m = this._sonosMaster(); this._mp("shuffle_set", { entity_id: m, shuffle: !this._hass.states[m].attributes.shuffle }); });
+    sr.querySelector("#repeat").addEventListener("click", () => { const m = this._sonosMaster(); const cur = this._hass.states[m].attributes.repeat || "off"; this._mp("repeat_set", { entity_id: m, repeat: { off: "all", all: "one", one: "off" }[cur] }); });
+    body.appendChild(sr);
+    // group actions
+    const ga = document.createElement("div"); ga.className = "row ga";
+    ga.innerHTML = `<button class="gab" id="ga"><ha-icon icon="mdi:link-variant"></ha-icon>Tout grouper</button>
+      <button class="gab" id="ua"><ha-icon icon="mdi:link-variant-off"></ha-icon>Séparer</button>`;
+    ga.querySelector("#ga").addEventListener("click", () => { const m = this._sonosMaster(); const o = this._spkList().filter((e) => e !== m && this._hass.states[e]); if (o.length) this._mp("join", { entity_id: m, group_members: o }); });
+    ga.querySelector("#ua").addEventListener("click", () => { this._spkList().forEach((e) => { if (this._hass.states[e]) this._mp("unjoin", { entity_id: e }); }); });
+    body.appendChild(ga);
+    // pièces
+    const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.style.marginTop = "6px"; lbl.innerHTML = `<span>Pièces & volumes</span>`;
+    body.appendChild(lbl);
+    this._spkList().forEach((eid) => {
+      const row = document.createElement("div"); row.className = "sroom"; row.dataset.e = eid;
+      const lk = document.createElement("button"); lk.className = "slk"; lk.innerHTML = `<ha-icon icon="mdi:link-variant"></ha-icon>`;
+      lk.addEventListener("click", () => { const m = this._sonosMaster(); if (eid === m) return; const grp = this._hass.states[m].attributes.group_members || [m]; grp.includes(eid) ? this._mp("unjoin", { entity_id: eid }) : this._mp("join", { entity_id: m, group_members: [eid] }); });
+      const nm = document.createElement("div"); nm.className = "srn";
+      const mute = document.createElement("button"); mute.className = "smute"; mute.innerHTML = `<ha-icon icon="mdi:volume-high"></ha-icon>`;
+      mute.addEventListener("click", () => { const s = this._hass.states[eid]; this._mp("volume_mute", { entity_id: eid, is_volume_muted: !(s && s.attributes.is_volume_muted) }); });
+      const sl = jmaSlider({ icon: "mdi:volume-high", fmt: (v) => v + "%", onCommit: (v) => this._mp("volume_set", { entity_id: eid, volume_level: v / 100 }) });
+      this._sSliders[eid] = sl;
+      row.append(lk, nm, mute, sl); body.appendChild(row);
+    });
+    this._sonosTick();
+  }
+  async _loadFavoritesPopup() {
+    const ent = this._spkList().find((e) => this._hass.states[e]); if (!ent) return;
+    try {
+      const root = await this._browse(ent, "favorites", "");
+      const out = [];
+      for (const node of (root.children || [])) {
+        if (node.can_play) out.push(node);
+        else if (node.can_expand) { try { const sub = await this._browse(ent, node.media_content_type, node.media_content_id); (sub.children || []).forEach((it) => { if (it.can_play) out.push(it); }); } catch (e) {} }
+        if (out.length >= 30) break;
+      }
+      const host = this.shadowRoot.getElementById("favs"); if (!host) return;
+      host.innerHTML = out.length ? "" : `<span style="opacity:.5;font-size:.78rem;">Aucun favori</span>`;
+      out.forEach((it) => {
+        const b = document.createElement("button"); b.className = "fav";
+        b.innerHTML = `<ha-icon icon="mdi:playlist-play"></ha-icon><span>${it.title}</span>`;
+        b.addEventListener("click", () => { this._mp("play_media", { entity_id: this._sonosMaster(), media_content_type: it.media_content_type, media_content_id: it.media_content_id }); jmaToast({ title: "Sonos", message: "▶ " + it.title, icon: "mdi:playlist-music", color: this._config.accent }); });
+        host.appendChild(b);
+      });
+    } catch (e) { const host = this.shadowRoot.getElementById("favs"); if (host) host.innerHTML = `<span style="opacity:.5;font-size:.78rem;">Favoris indisponibles</span>`; }
+  }
+  _sonosTick() {
+    if (!this._sSliders) return;
+    const master = this._sonosMaster(); const ms = this._hass.states[master]; if (!ms) return;
+    const a = ms.attributes, grp = a.group_members || [master];
+    const sh = this.shadowRoot.getElementById("shuffle"); if (sh) sh.classList.toggle("on", !!a.shuffle);
+    const rp = this.shadowRoot.getElementById("repeat"); const rep = a.repeat || "off";
+    if (rp) { rp.classList.toggle("on", rep !== "off"); rp.querySelector(".ri").setAttribute("icon", rep === "one" ? "mdi:repeat-once" : "mdi:repeat"); }
+    this._spkList().forEach((eid) => {
+      const row = this.shadowRoot.querySelector(`.sroom[data-e="${eid}"]`); if (!row) return;
+      const s = this._hass.states[eid], sa = s ? s.attributes : {};
+      row.querySelector(".srn").textContent = (this._config.names && this._config.names[eid]) || (sa.friendly_name || eid);
+      const lk = row.querySelector(".slk"), isM = eid === master, grouped = grp.includes(eid);
+      lk.classList.toggle("master", isM); lk.classList.toggle("on", grouped && !isM);
+      lk.querySelector("ha-icon").setAttribute("icon", isM ? "mdi:crown" : grouped ? "mdi:link-variant" : "mdi:link-variant-off");
+      const muted = !!sa.is_volume_muted, mute = row.querySelector(".smute");
+      mute.classList.toggle("on", muted); mute.querySelector("ha-icon").setAttribute("icon", muted ? "mdi:volume-off" : "mdi:volume-high");
+      const sl = this._sSliders[eid];
+      if (sa.volume_level != null) { sl.hidden = false; sl.setValue(Math.round(sa.volume_level * 100)); } else sl.hidden = true;
+    });
   }
   _energyBody(body) {
     const num = (k) => { const e = this._config[k]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; };
@@ -2010,12 +2133,12 @@ customElements.define("jma-cameras-card", JmaCamerasCard);
 //  🔊 SONOS MULTI-ROOM — lecture du groupe + grouper/dégrouper + volume/pièce
 // =============================================================================
 class JmaSonosCard extends HTMLElement {
-  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._sliders = {}; }
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Sonos", favorites: true, ...c }; this._spk = c.entities || []; }
-  getCardSize() { return 4; }
+  getCardSize() { return 2; }
   static getStubConfig() { return { name: "Sonos", entities: ["media_player.salon"] }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._config.favorites && !this._favTried) this._loadFavorites(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   _call(s, data) { this._hass.callService("media_player", s, data); }
   _master() {
     if (this._config.master && this._hass.states[this._config.master]) return this._config.master;
@@ -2032,149 +2155,97 @@ class JmaSonosCard extends HTMLElement {
     const c = this._config;
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .transport{display:flex;justify-content:center;gap:12px;align-items:center;margin:2px 0;}
-        .tbtn{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);
-          color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:background .2s;}
-        .tbtn.big{width:48px;height:48px;background:var(--jma-rose);color:var(--jma-dark);}
-        .tbtn.on{color:var(--jma-rose);} .tbtn ha-icon{--mdc-icon-size:20px;}
-        .favs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin;}
-        .favs[hidden]{display:none;}
-        .fav{flex:none;display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;border:none;cursor:pointer;
-          background:var(--jma-surf3);color:var(--jma-text);font-size:.72rem;font-weight:600;white-space:nowrap;max-width:140px;}
-        .fav ha-icon{--mdc-icon-size:15px;color:var(--jma-rose);flex:none;} .fav span{overflow:hidden;text-overflow:ellipsis;}
-        .ga{display:flex;gap:6px;}
-        .gab{flex:1;height:28px;border:none;border-radius:9px;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);
-          font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:4px;}
-        .gab ha-icon{--mdc-icon-size:15px;}
-        .rooms{display:flex;flex-direction:column;gap:7px;margin-top:2px;}
-        .room{display:flex;align-items:center;gap:7px;}
-        .lk,.mute{width:28px;height:28px;border-radius:8px;border:none;cursor:pointer;flex:none;background:var(--jma-surf3);
-          color:var(--jma-icon);display:flex;align-items:center;justify-content:center;}
-        .lk.on{background:var(--jma-rose);color:var(--jma-dark);} .lk ha-icon,.mute ha-icon{--mdc-icon-size:16px;}
-        .lk.master{background:var(--jma-beige);color:var(--jma-dark);}
-        .mute.on{color:#ff5252;}
-        .rn{font-size:.73rem;font-weight:600;width:70px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .room .slider{flex:1;height:26px;}
-        .sec{font-size:.62rem;opacity:.5;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+        .transport{display:flex;gap:8px;align-items:center;flex:none;}
+        .tbtn{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);
+          color:var(--jma-text);display:flex;align-items:center;justify-content:center;}
+        .tbtn.big{background:var(--jma-rose);color:var(--jma-dark);} .tbtn ha-icon{--mdc-icon-size:18px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="art"></div><div class="content">
         <div class="top"><div class="badge"><ha-icon class="ic" icon="mdi:speaker-multiple"></ha-icon></div>
-          <div class="meta"><div class="name" id="nm">${c.name}</div><div class="sub" id="sub"></div></div></div>
-        <div class="transport">
-          <button class="tbtn" id="shuffle" title="Aléatoire"><ha-icon icon="mdi:shuffle"></ha-icon></button>
-          <button class="tbtn" data-a="media_previous_track"><ha-icon icon="mdi:skip-previous"></ha-icon></button>
-          <button class="tbtn big" data-a="media_play_pause"><ha-icon class="pp" icon="mdi:play"></ha-icon></button>
-          <button class="tbtn" data-a="media_next_track"><ha-icon icon="mdi:skip-next"></ha-icon></button>
-          <button class="tbtn" id="repeat" title="Répéter"><ha-icon class="ri" icon="mdi:repeat"></ha-icon></button>
-        </div>
-        <div class="favs" id="favs" hidden></div>
-        <div class="ga">
-          <button class="gab" id="groupall"><ha-icon icon="mdi:link-variant"></ha-icon>Tout grouper</button>
-          <button class="gab" id="ungroupall"><ha-icon icon="mdi:link-variant-off"></ha-icon>Séparer</button>
-        </div>
-        <div class="rooms" id="rooms"></div>
+          <div class="meta"><div class="name" id="nm">${c.name}</div><div class="sub" id="sub"></div></div>
+          <div class="transport">
+            <button class="tbtn" data-a="media_previous_track"><ha-icon icon="mdi:skip-previous"></ha-icon></button>
+            <button class="tbtn big" data-a="media_play_pause"><ha-icon class="pp" icon="mdi:play"></ha-icon></button>
+            <button class="tbtn" data-a="media_next_track"><ha-icon icon="mdi:skip-next"></ha-icon></button>
+          </div></div>
       </div></div></ha-card>`;
-    this.shadowRoot.querySelectorAll(".tbtn[data-a]").forEach((b) =>
-      b.addEventListener("click", () => this._call(b.dataset.a, { entity_id: this._master() })));
-    this.shadowRoot.getElementById("shuffle").addEventListener("click", () => {
-      const m = this._master(); this._call("shuffle_set", { entity_id: m, shuffle: !this._hass.states[m].attributes.shuffle });
-    });
-    this.shadowRoot.getElementById("repeat").addEventListener("click", () => {
-      const m = this._master(); const cur = this._hass.states[m].attributes.repeat || "off";
-      this._call("repeat_set", { entity_id: m, repeat: { off: "all", all: "one", one: "off" }[cur] });
-    });
-    this.shadowRoot.getElementById("groupall").addEventListener("click", () => {
-      const m = this._master(); const others = this._spk.filter((e) => e !== m && this._hass.states[e]);
-      if (others.length) this._call("join", { entity_id: m, group_members: others });
-    });
-    this.shadowRoot.getElementById("ungroupall").addEventListener("click", () => {
-      this._spk.forEach((e) => { if (this._hass.states[e]) this._call("unjoin", { entity_id: e }); });
-    });
-    const rooms = this.shadowRoot.getElementById("rooms");
-    this._spk.forEach((eid) => {
-      const row = document.createElement("div"); row.className = "room"; row.dataset.e = eid;
-      const lk = document.createElement("button"); lk.className = "lk"; lk.innerHTML = `<ha-icon icon="mdi:link-variant"></ha-icon>`;
-      lk.addEventListener("click", () => this._toggleJoin(eid));
-      const nm = document.createElement("div"); nm.className = "rn";
-      const mute = document.createElement("button"); mute.className = "mute"; mute.innerHTML = `<ha-icon icon="mdi:volume-high"></ha-icon>`;
-      mute.addEventListener("click", () => { const s = this._hass.states[eid]; this._call("volume_mute", { entity_id: eid, is_volume_muted: !(s && s.attributes.is_volume_muted) }); });
-      const sl = jmaSlider({ icon: "mdi:volume-high", fmt: (v) => v + "%", onCommit: (v) => this._call("volume_set", { entity_id: eid, volume_level: v / 100 }) });
-      this._sliders[eid] = sl;
-      row.append(lk, nm, mute, sl); rooms.appendChild(row);
-    });
+    this.shadowRoot.querySelectorAll(".tbtn").forEach((b) =>
+      b.addEventListener("click", (e) => { e.stopPropagation(); this._call(b.dataset.a, { entity_id: this._master() }); }));
+    this.shadowRoot.getElementById("tile").addEventListener("click", (e) => { if (e.target.closest(".tbtn")) return; this._openPopup(); });
   }
-  _toggleJoin(eid) {
-    const master = this._master();
-    if (eid === master) return;
-    const grp = (this._hass.states[master].attributes.group_members) || [master];
-    if (grp.includes(eid)) this._call("unjoin", { entity_id: eid });
-    else this._call("join", { entity_id: master, group_members: [eid] });
-  }
-  _browse(ent, type, id) { return this._hass.callWS({ type: "media_player/browse_media", entity_id: ent, media_content_type: type, media_content_id: id }); }
-  async _loadFavorites() {
-    this._favTried = true;
-    const ent = this._spk.find((e) => this._hass.states[e]); if (!ent) return;
-    try {
-      const root = await this._browse(ent, "favorites", "");
-      const out = [];
-      for (const node of (root.children || [])) {
-        if (node.can_play) out.push(node);
-        else if (node.can_expand) {
-          try { const sub = await this._browse(ent, node.media_content_type, node.media_content_id); (sub.children || []).forEach((it) => { if (it.can_play) out.push(it); }); } catch (e) {}
-        }
-        if (out.length >= 30) break;
-      }
-      this._renderFavorites(out);
-    } catch (e) { this._favTried = false; }
-  }
-  _renderFavorites(items) {
-    const host = this.shadowRoot.getElementById("favs"); if (!host) return;
-    host.innerHTML = ""; host.hidden = !items.length;
-    items.forEach((it) => {
-      const b = document.createElement("button"); b.className = "fav";
-      b.innerHTML = `<ha-icon icon="mdi:playlist-play"></ha-icon><span>${it.title}</span>`;
-      b.addEventListener("click", () => {
-        this._call("play_media", { entity_id: this._master(), media_content_type: it.media_content_type, media_content_id: it.media_content_id });
-        jmaToast({ title: "Sonos", message: "▶ " + it.title, icon: "mdi:playlist-music", color: this._config.accent });
-      });
-      host.appendChild(b);
-    });
+  _openPopup() {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { ...this._config, kind: "sonos", speakers: this._spk, entity: this._master() };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
   }
   _update() {
     const master = this._master();
     const ms = this._hass.states[master]; if (!ms) return;
     const a = ms.attributes;
-    const grp = a.group_members || [master];
     const playing = ms.state === "playing";
-    this.shadowRoot.getElementById("sub").textContent = a.media_title ? a.media_title + (a.media_artist ? " — " + a.media_artist : "") : (ms.state === "playing" || ms.state === "paused" ? ms.state : "À l'arrêt");
+    const grpN = (a.group_members || [master]).length;
+    const np = a.media_title ? a.media_title + (a.media_artist ? " — " + a.media_artist : "") : (["playing", "paused"].includes(ms.state) ? ms.state : "À l'arrêt");
+    this.shadowRoot.getElementById("sub").textContent = grpN > 1 ? "👥 " + grpN + " · " + np : np;
     this.shadowRoot.querySelector(".pp").setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
     this.shadowRoot.getElementById("tile").classList.toggle("on", ["playing", "paused"].includes(ms.state));
-    this.shadowRoot.getElementById("shuffle").classList.toggle("on", !!a.shuffle);
-    const rep = a.repeat || "off";
-    this.shadowRoot.getElementById("repeat").classList.toggle("on", rep !== "off");
-    this.shadowRoot.querySelector(".ri").setAttribute("icon", rep === "one" ? "mdi:repeat-once" : "mdi:repeat");
     const art = this.shadowRoot.querySelector(".art");
     art.style.backgroundImage = a.entity_picture && ["playing", "paused"].includes(ms.state) ? `url("${a.entity_picture}")` : "";
-    this._spk.forEach((eid) => {
-      const s = this._hass.states[eid]; const row = this.shadowRoot.querySelector(`.room[data-e="${eid}"]`);
-      if (!row) return;
-      const sa = s ? s.attributes : {};
-      row.querySelector(".rn").textContent = (this._config.names && this._config.names[eid]) || (sa.friendly_name || eid);
-      const lk = row.querySelector(".lk");
-      const isMaster = eid === master, grouped = grp.includes(eid);
-      lk.classList.toggle("master", isMaster);
-      lk.classList.toggle("on", grouped && !isMaster);
-      lk.querySelector("ha-icon").setAttribute("icon", isMaster ? "mdi:crown" : grouped ? "mdi:link-variant" : "mdi:link-variant-off");
-      const muted = !!sa.is_volume_muted;
-      const mute = row.querySelector(".mute");
-      mute.classList.toggle("on", muted);
-      mute.querySelector("ha-icon").setAttribute("icon", muted ? "mdi:volume-off" : "mdi:volume-high");
-      const sl = this._sliders[eid];
-      if (sa.volume_level != null) { sl.hidden = false; sl.setValue(Math.round(sa.volume_level * 100)); } else sl.hidden = true;
-    });
   }
 }
 customElements.define("jma-sonos-card", JmaSonosCard);
+
+// =============================================================================
+//  ✝️ SAINT DU JOUR (calendrier français intégré)
+// =============================================================================
+const SAINTS = [
+  ["Marie", "Basile", "Geneviève", "Odilon", "Édouard", "Mélaine", "Raymond", "Lucien", "Alix", "Guillaume", "Pauline", "Tatiana", "Yvette", "Nina", "Rémi", "Marcel", "Roseline", "Prisca", "Marius", "Sébastien", "Agnès", "Vincent", "Barnard", "François de Sales", "Conversion de St Paul", "Paule", "Angèle", "Thomas d'Aquin", "Gildas", "Martine", "Marcelle"],
+  ["Ella", "Présentation", "Blaise", "Véronique", "Agathe", "Gaston", "Eugénie", "Jacqueline", "Apolline", "Arnaud", "N.-D. de Lourdes", "Félix", "Béatrice", "Valentin", "Claude", "Julienne", "Alexis", "Bernadette", "Gabin", "Aimée", "Pierre Damien", "Isabelle", "Lazare", "Modeste", "Roméo", "Nestor", "Honorine", "Romain", "Auguste"],
+  ["Aubin", "Charles le Bon", "Guénolé", "Casimir", "Olive", "Colette", "Félicité", "Jean de Dieu", "Françoise", "Vivien", "Rosine", "Justine", "Rodrigue", "Mathilde", "Louise", "Bénédicte", "Patrice", "Cyrille", "Joseph", "Herbert", "Clémence", "Léa", "Victorien", "Cath. de Suède", "Annonciation", "Larissa", "Habib", "Gontran", "Gwladys", "Amédée", "Benjamin"],
+  ["Hugues", "Sandrine", "Richard", "Isidore", "Irène", "Marcellin", "J.-B. de la Salle", "Julie", "Gautier", "Fulbert", "Stanislas", "Jules", "Ida", "Maxime", "Paterne", "Benoît-Joseph", "Anicet", "Parfait", "Emma", "Odette", "Anselme", "Alexandre", "Georges", "Fidèle", "Marc", "Alida", "Zita", "Valérie", "Cath. de Sienne", "Robert"],
+  ["Jérémie", "Boris", "Phil. & Jacques", "Sylvain", "Judith", "Prudence", "Gisèle", "Désiré", "Pacôme", "Solange", "Estelle", "Achille", "Rolande", "Matthias", "Denise", "Honoré", "Pascal", "Éric", "Yves", "Bernardin", "Constantin", "Émile", "Didier", "Donatien", "Sophie", "Bérenger", "Augustin", "Germain", "Aymar", "Ferdinand", "Pétronille"],
+  ["Justin", "Blandine", "Kévin", "Clotilde", "Igor", "Norbert", "Gilbert", "Médard", "Diane", "Landry", "Barnabé", "Guy", "Antoine de Padoue", "Élisée", "Germaine", "J.-F. Régis", "Hervé", "Léonce", "Romuald", "Silvère", "Rodolphe", "Alban", "Audrey", "Jean-Baptiste", "Prosper", "Anthelme", "Fernand", "Irénée", "Pierre & Paul", "Martial"],
+  ["Thierry", "Martinien", "Thomas", "Florent", "Antoine", "Mariette", "Raoul", "Thibault", "Amandine", "Ulrich", "Benoît", "Olivier", "Henri & Joël", "Camille", "Donald", "N.-D. Mont-Carmel", "Charlotte", "Frédéric", "Arsène", "Marina", "Victor", "Marie-Madeleine", "Brigitte", "Christine", "Jacques", "Anne & Joachim", "Nathalie", "Samson", "Marthe", "Juliette", "Ignace de Loyola"],
+  ["Alphonse", "Julien Eymard", "Lydie", "J.-M. Vianney", "Abel", "Transfiguration", "Gaétan", "Dominique", "Amour", "Laurent", "Claire", "Clarisse", "Hippolyte", "Évrard", "Assomption", "Armel", "Hyacinthe", "Hélène", "Jean Eudes", "Bernard", "Christophe", "Fabrice", "Rose de Lima", "Barthélemy", "Louis", "Natacha", "Monique", "Augustin", "Sabine", "Fiacre", "Aristide"],
+  ["Gilles", "Ingrid", "Grégoire", "Rosalie", "Raïssa", "Bertrand", "Reine", "Nativité de Marie", "Alain", "Inès", "Adelphe", "Apollinaire", "Aimé", "La Sainte Croix", "Roland", "Édith", "Renaud", "Nadège", "Émilie", "Davy", "Matthieu", "Maurice", "Constant", "Thècle", "Hermann", "Côme & Damien", "Vincent de Paul", "Venceslas", "Michel & Gabriel", "Jérôme"],
+  ["Thérèse E.-J.", "Léger", "Gérard", "François d'Assise", "Fleur", "Bruno", "Serge", "Pélagie", "Denis", "Ghislain", "Firmin", "Wilfried", "Géraud", "Juste", "Thérèse d'Avila", "Edwige", "Baudouin", "Luc", "René", "Adeline", "Céline", "Élodie", "Jean de Capistran", "Florentin", "Crépin", "Dimitri", "Émeline", "Simon & Jude", "Narcisse", "Bienvenue", "Quentin"],
+  ["Toussaint", "Défunts", "Hubert", "Charles", "Sylvie", "Bertille", "Carine", "Geoffroy", "Théodore", "Léon", "Martin", "Christian", "Brice", "Sidoine", "Albert", "Marguerite", "Élisabeth", "Aude", "Tanguy", "Edmond", "Présentation de Marie", "Cécile", "Clément", "Flora", "Catherine", "Delphine", "Séverin", "Jacques de la Marche", "Saturnin", "André"],
+  ["Florence", "Viviane", "Xavier", "Barbara", "Gérald", "Nicolas", "Ambroise", "Imm. Conception", "Pierre Fourier", "Romaric", "Daniel", "Jeanne-Françoise", "Lucie", "Odile", "Ninon", "Alice", "Gaël", "Gatien", "Urbain", "Théophile", "Pierre Canisius", "Fr.-Xavière", "Armand", "Adèle", "Noël", "Étienne", "Jean", "Innocents", "David", "Roger", "Sylvestre"],
+];
+class JmaSaintCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; }
+  getCardSize() { return 1; }
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .badge{background:var(--jma-rose);} .badge ha-icon{color:var(--jma-dark);}
+        .sd{font-weight:800;font-size:1.02rem;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="top"><div class="badge"><ha-icon icon="mdi:cross-outline"></ha-icon></div>
+          <div class="meta"><div class="sd" id="saint">—</div><div class="sub" id="date"></div></div></div>
+      </div></div></ha-card>`;
+  }
+  _update() {
+    const d = new Date();
+    let saint;
+    if (this._config.entity && this._hass.states[this._config.entity]) saint = this._hass.states[this._config.entity].state;
+    else { const arr = SAINTS[d.getMonth()]; saint = (arr && arr[d.getDate() - 1]) || "—"; }
+    const days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+    const months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+    const special = /^(N\.-D\.|Toussaint|Défunts|Assomption|Annonciation|Présentation|Transfiguration|Nativité|La Sainte|Imm\.|Noël|Conversion|Marie$)/.test(saint);
+    this.shadowRoot.getElementById("saint").textContent = special ? saint : "St" + (/^[AÉEIOUYH]/i.test(saint) ? "e " : " ") + saint;
+    this.shadowRoot.getElementById("date").textContent = days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
+  }
+}
+customElements.define("jma-saint-card", JmaSaintCard);
 
 // =============================================================================
 //  🧑‍🤝‍🧑 PRÉSENCE (avatars)
@@ -2654,6 +2725,7 @@ function jmaEditorSchema(type) {
   if (t === "custom:jma-sonos-card") return [
     txt("name"), ent("entities", "media_player", true, true), ent("master", "media_player"),
     { name: "favorites", selector: { boolean: {} } }, txt("color"), txt("accent"), themeSel];
+  if (t === "custom:jma-saint-card") return [ent("entity", "sensor"), txt("color"), txt("accent"), themeSel];
 
   if (t === "custom:jma-ev-card") return [
     txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
@@ -2918,6 +2990,7 @@ REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
 REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
 REG("jma-sonos-card", "JMA Sonos", "Multi-room : groupes + volume par pièce.");
+REG("jma-saint-card", "JMA Saint du jour", "Saint du jour (calendrier français).");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
