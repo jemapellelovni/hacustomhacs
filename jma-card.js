@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -24,8 +24,8 @@ const DARK = "#0a0a0b";
 //  STYLE & HELPERS PARTAGÉS
 // =============================================================================
 const BASE_CSS = `
-  .tile{position:relative;overflow:hidden;border-radius:22px;min-height:118px;height:100%;
-    padding:14px;box-sizing:border-box;background:rgba(255,255,255,.06);
+  .tile{position:relative;overflow:hidden;border-radius:18px;min-height:60px;height:100%;
+    padding:11px;box-sizing:border-box;background:rgba(255,255,255,.06);
     backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
     color:#fff;user-select:none;display:flex;touch-action:pan-y;
     transition:transform .22s cubic-bezier(.2,.7,.3,1),background .3s ease;}
@@ -33,61 +33,61 @@ const BASE_CSS = `
   .tile:not(.flat):hover{transform:scale(1.02);}
   .tile.active{transform:scale(.985);}
   .content{position:relative;z-index:1;display:flex;flex-direction:column;
-    justify-content:space-between;gap:12px;width:100%;}
-  .top{display:flex;align-items:center;gap:10px;}
-  .badge{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.12);flex:none;
-    display:flex;align-items:center;justify-content:center;transition:background .3s ease;cursor:pointer;}
-  .badge ha-icon{--mdc-icon-size:24px;color:rgba(255,255,255,.78);transition:color .3s;}
+    justify-content:space-between;gap:9px;width:100%;}
+  .top{display:flex;align-items:center;gap:9px;}
+  .badge{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.12);flex:none;
+    display:flex;align-items:center;justify-content:center;transition:background .3s ease;}
+  .badge ha-icon{--mdc-icon-size:20px;color:rgba(255,255,255,.78);transition:color .3s;}
   .meta{min-width:0;flex:1;}
-  .name{font-weight:600;font-size:clamp(.85rem,2.4vw,1.02rem);letter-spacing:-.2px;line-height:1.15;
+  .name{font-weight:600;font-size:clamp(.8rem,2.2vw,.94rem);letter-spacing:-.2px;line-height:1.12;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .sub{font-size:clamp(.68rem,1.8vw,.8rem);opacity:.62;margin-top:2px;
+  .sub{font-size:clamp(.66rem,1.7vw,.76rem);opacity:.62;margin-top:1px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tile.on .badge{background:rgba(10,10,11,.16);}
   .tile.on .badge ha-icon{color:var(--jma-dark);}
 
   /* slider horizontal */
-  .slider{position:relative;height:36px;border-radius:13px;overflow:hidden;flex:none;
+  .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:none;
     background:rgba(255,255,255,.14);touch-action:none;cursor:pointer;}
   .slider[hidden]{display:none;}
   .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;
     background:linear-gradient(90deg,var(--jma-beige) 0%,var(--jma-rose) 100%);
     transition:width .28s cubic-bezier(.2,.7,.3,1);}
   .slider.dragging .sfill{transition:none;}
-  .sval{position:absolute;left:12px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
-    font-weight:700;font-size:.82rem;text-shadow:0 1px 2px rgba(0,0,0,.28);}
-  .sicon{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
-    --mdc-icon-size:18px;color:rgba(255,255,255,.85);}
+  .sval{position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
+    font-weight:700;font-size:.78rem;text-shadow:0 1px 2px rgba(0,0,0,.28);}
+  .sicon{position:absolute;right:9px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
+    --mdc-icon-size:16px;color:rgba(255,255,255,.85);}
 
   /* pastille on/off (switch) */
-  .pill{width:56px;height:32px;border-radius:999px;background:rgba(255,255,255,.2);flex:none;
-    position:relative;transition:background .3s ease;}
-  .pill .knob{position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;
+  .pill{width:50px;height:30px;border-radius:999px;background:rgba(255,255,255,.2);flex:none;
+    position:relative;transition:background .3s ease;cursor:pointer;}
+  .pill .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;
     box-shadow:0 2px 6px rgba(0,0,0,.35);transition:left .26s cubic-bezier(.2,.8,.2,1);}
   .tile.on .pill{background:var(--jma-rose);}
-  .tile.on .pill .knob{left:27px;}
+  .tile.on .pill .knob{left:23px;}
 
   /* boutons de contrôle */
-  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
-  .cbtn{flex:1 1 auto;min-width:52px;height:42px;border:none;border-radius:13px;cursor:pointer;
-    background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;
-    font-weight:600;font-size:.8rem;transition:background .2s,transform .08s;}
+  .btnrow{display:flex;gap:6px;flex-wrap:wrap;}
+  .cbtn{flex:1 1 auto;min-width:46px;height:34px;border:none;border-radius:11px;cursor:pointer;
+    background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;gap:5px;
+    font-weight:600;font-size:.76rem;transition:background .2s,transform .08s;}
   .cbtn:hover{background:rgba(248,165,194,.2);}
   .cbtn:active{transform:scale(.93);}
-  .cbtn ha-icon{--mdc-icon-size:20px;}
+  .cbtn ha-icon{--mdc-icon-size:18px;}
   .cbtn.accent{background:var(--jma-rose);color:var(--jma-dark);}
 
   /* stepper thermostat */
-  .therm{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-  .set{font-weight:800;font-size:1.7rem;letter-spacing:-1px;text-align:center;flex:1;}
-  .step{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;background:rgba(255,255,255,.12);
+  .therm{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .set{font-weight:800;font-size:1.35rem;letter-spacing:-1px;text-align:center;flex:1;}
+  .step{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;background:rgba(255,255,255,.12);
     color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .08s;}
-  .step ha-icon{--mdc-icon-size:24px;}
+  .step ha-icon{--mdc-icon-size:20px;}
   .step:active{transform:scale(.9);}
 
   /* chips (modes) */
-  .chips{display:flex;gap:6px;flex-wrap:wrap;}
-  .chip{padding:6px 9px;border-radius:10px;background:rgba(255,255,255,.1);font-size:.72rem;cursor:pointer;
+  .chips{display:flex;gap:5px;flex-wrap:wrap;}
+  .chip{padding:4px 8px;border-radius:9px;background:rgba(255,255,255,.1);font-size:.68rem;cursor:pointer;
     border:none;color:#fff;text-transform:capitalize;transition:background .2s;}
   .chip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
 
@@ -165,9 +165,10 @@ class JmaBase extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._built = false;
   }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   setConfig(config) {
     if (!config.entity) throw new Error("jma : 'entity' est requis");
-    this._config = { hold_action: "popup", color: ROSE, accent: BEIGE, dark: DARK, ...config };
+    this._config = { tap_action: "popup", color: ROSE, accent: BEIGE, dark: DARK, ...config };
     this._built = false;
   }
   set hass(h) {
@@ -189,29 +190,32 @@ class JmaBase extends HTMLElement {
   _icon(s, fallback) {
     return this._config.icon || (s && s.attributes.icon) || fallback;
   }
-  // long-press -> pop-up ; tap -> onTap (optionnel)
+  // clic simple -> onTap (pop-up par défaut) ; appui long -> fiche HA.
+  // Les gestes démarrés sur un contrôle inline (slider/boutons/pastille) sont ignorés.
   _wireHold(el, onTap) {
-    let holdTimer, holdFired, sx, sy;
+    const CTRL = ["slider", "cbtn", "pill", "step", "chip"];
+    let holdTimer, holdFired, skip, sx, sy;
     el.addEventListener("pointerdown", (e) => {
+      skip = e.composedPath().some((n) => n.classList && CTRL.some((c) => n.classList.contains(c)));
+      if (skip) return;
       holdFired = false; sx = e.clientX; sy = e.clientY;
       el.classList.add("active");
       const r = el.getBoundingClientRect();
       el.style.setProperty("--rx", ((e.clientX - r.left) / r.width) * 100 + "%");
       el.style.setProperty("--ry", ((e.clientY - r.top) / r.height) * 100 + "%");
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
-      if (this._config.hold_action !== "none") {
-        holdTimer = setTimeout(() => {
-          holdFired = true;
-          if (navigator.vibrate) navigator.vibrate(12);
-          this._hold();
-        }, 480);
-      }
+      holdTimer = setTimeout(() => {
+        holdFired = true;
+        if (navigator.vibrate) navigator.vibrate(12);
+        this._moreInfo();
+      }, 480);
     });
     el.addEventListener("pointermove", (e) => {
       if (sx == null) return;
       if (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8) clearTimeout(holdTimer);
     });
     el.addEventListener("pointerup", () => {
+      if (skip) return;
       clearTimeout(holdTimer);
       el.classList.remove("active");
       sx = sy = null;
@@ -223,13 +227,15 @@ class JmaBase extends HTMLElement {
       clearTimeout(holdTimer); el.classList.remove("active"); sx = sy = null;
     });
   }
-  _hold() {
-    if (this._config.hold_action === "more-info") {
-      this.dispatchEvent(new CustomEvent("hass-more-info", {
-        bubbles: true, composed: true, detail: { entityId: this._config.entity },
-      }));
-      return;
-    }
+  _moreInfo() {
+    this.dispatchEvent(new CustomEvent("hass-more-info", {
+      bubbles: true, composed: true, detail: { entityId: this._config.entity },
+    }));
+  }
+  _tapAction() {
+    const a = this._config.tap_action || "popup";
+    if (a === "none") return;
+    if (a === "more-info") return this._moreInfo();
     this._openPopup();
   }
   _openPopup() {
@@ -265,7 +271,7 @@ class JmaLightCard extends JmaBase {
            <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
        </div></div></ha-card>`;
     const tile = this.shadowRoot.getElementById("tile");
-    this._wireHold(tile, () => this._call("homeassistant", "toggle", { entity_id: this._config.entity }));
+    this._wireHold(tile, () => this._tapAction());
     this._sl = jmaSlider({
       icon: "mdi:brightness-6", fmt: (v) => v + "%",
       onCommit: (v) => this._call("light", "turn_on", { entity_id: this._config.entity, brightness_pct: v }),
@@ -309,7 +315,11 @@ class JmaSwitchCard extends JmaBase {
            <div class="pill"><div class="knob"></div></div></div>
        </div></div></ha-card>`;
     const tile = this.shadowRoot.getElementById("tile");
-    this._wireHold(tile, () => this._call("homeassistant", "toggle", { entity_id: this._config.entity }));
+    this._wireHold(tile, () => this._tapAction());
+    this.shadowRoot.querySelector(".pill").addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._call("homeassistant", "toggle", { entity_id: this._config.entity });
+    });
   }
   _update() {
     const s = this._s;
@@ -340,7 +350,7 @@ class JmaCoverCard extends JmaBase {
            <button class="cbtn" data-a="close_cover"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
          </div>
        </div></div></ha-card>`;
-    this._wireHold(this.shadowRoot.querySelector(".badge"), null);
+    this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
       b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: this._config.entity }))
     );
@@ -384,7 +394,7 @@ class JmaThermostatCard extends JmaBase {
          </div>
          <div class="chips"></div>
        </div></div></ha-card>`;
-    this._wireHold(this.shadowRoot.querySelector(".badge"), null);
+    this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this.shadowRoot.querySelectorAll(".step").forEach((b) =>
       b.addEventListener("click", () => this._bump(Number(b.dataset.d)))
     );
@@ -440,7 +450,7 @@ class JmaMediaCard extends JmaBase {
            <button class="cbtn" data-a="media_next_track"><ha-icon icon="mdi:skip-next"></ha-icon></button>
          </div>
        </div></div></ha-card>`;
-    this._wireHold(this.shadowRoot.querySelector(".badge"), null);
+    this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
       b.addEventListener("click", () => this._call("media_player", b.dataset.a, { entity_id: this._config.entity }))
     );
@@ -491,7 +501,7 @@ class JmaVacuumCard extends JmaBase {
            <button class="cbtn" data-a="locate" title="Localiser"><ha-icon icon="mdi:map-marker"></ha-icon></button>
          </div>
        </div></div></ha-card>`;
-    this._wireHold(this.shadowRoot.querySelector(".badge"), null);
+    this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
       b.addEventListener("click", () => this._call("vacuum", b.dataset.a, { entity_id: this._config.entity }))
     );
@@ -559,6 +569,7 @@ class JmaSceneCard extends JmaBase {
     const d = this._domain();
     this._call(d === "script" ? "script" : "scene", "turn_on", { entity_id: this._config.entity });
     if (navigator.vibrate) navigator.vibrate(10);
+    jmaToast({ title: this._name(this._s), message: "Activé", icon: "mdi:check-circle", color: this._config.accent || BEIGE, duration: 2200 });
     const sub = this.shadowRoot.querySelector(".sub");
     sub.textContent = "✓ Activé";
     clearTimeout(this._t);
@@ -584,7 +595,7 @@ class JmaAlarmCard extends JmaBase {
            <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
          <div class="btnrow" id="row"></div>
        </div></div></ha-card>`;
-    this._wireHold(this.shadowRoot.querySelector(".badge"), null);
+    this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this._sig = null;
   }
   _modes() {
@@ -662,6 +673,7 @@ class JmaCard extends HTMLElement {
   }
   getCardSize() { return 2; }
   static getStubConfig() { return { entity: "light.living_room", slider: "auto" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(hass) {
     this._hass = hass;
     if (!this._built) this._build();
@@ -824,7 +836,7 @@ class JmaCard extends HTMLElement {
     if (this._holdFired) return this._cancel();
     this._cancel();
     tile.classList.remove("ripple"); void tile.offsetWidth; tile.classList.add("ripple");
-    this._tap();
+    this._openPopup();
   }
   _cancel() {
     clearTimeout(this._holdTimer);
@@ -835,11 +847,7 @@ class JmaCard extends HTMLElement {
     setTimeout(() => this._update(), 120);
   }
   _hold() {
-    if (this._config.hold_action === "more-info") {
-      this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._config.entity } }));
-      return;
-    }
-    this._openPopup();
+    this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._config.entity } }));
   }
   _openPopup() {
     if (this._popup) return;
@@ -1094,6 +1102,200 @@ class JmaPopup extends HTMLElement {
 customElements.define("jma-card-popup", JmaPopup);
 
 // =============================================================================
+//  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
+// =============================================================================
+const ED_LABELS = {
+  entity: "Entité", name: "Nom", icon: "Icône", color: "Couleur d'accent",
+  accent: "Couleur secondaire", tap_action: "Clic simple", slider: "Type de slider",
+  battery_entity: "Capteur batterie", area_entity: "Capteur pièce en cours",
+  status_entity: "Capteur d'état", code: "Code (optionnel)", title: "Titre",
+};
+function jmaEditorSchema(type) {
+  const t = type || "custom:jma-card";
+  const dom = {
+    "custom:jma-light-card": "light",
+    "custom:jma-switch-card": ["switch", "input_boolean", "fan"],
+    "custom:jma-cover-card": "cover",
+    "custom:jma-thermostat-card": "climate",
+    "custom:jma-media-card": "media_player",
+    "custom:jma-vacuum-card": "vacuum",
+    "custom:jma-scene-card": ["scene", "script"],
+    "custom:jma-alarm-card": "alarm_control_panel",
+  }[t];
+  const schema = [
+    { name: "entity", required: true, selector: { entity: dom ? { domain: dom } : {} } },
+    { name: "name", selector: { text: {} } },
+    { name: "icon", selector: { icon: {} } },
+  ];
+  if (t === "custom:jma-card")
+    schema.push({ name: "slider", selector: { select: { mode: "dropdown", options:
+      ["auto", "brightness", "temperature", "volume", "position", "none"].map((v) => ({ value: v, label: v })) } } });
+  if (t === "custom:jma-vacuum-card") {
+    schema.push({ name: "battery_entity", selector: { entity: { domain: "sensor" } } });
+    schema.push({ name: "area_entity", selector: { entity: { domain: "sensor" } } });
+  }
+  if (t === "custom:jma-alarm-card") schema.push({ name: "code", selector: { text: {} } });
+  schema.push({ name: "color", selector: { text: {} } });
+  schema.push({ name: "accent", selector: { text: {} } });
+  schema.push({ name: "tap_action", selector: { select: { mode: "dropdown", options: [
+    { value: "popup", label: "Pop-up JMA" }, { value: "more-info", label: "Fiche HA" }, { value: "none", label: "Aucun" }] } } });
+  return schema;
+}
+class JmaCardEditor extends HTMLElement {
+  setConfig(config) { this._config = config; this._render(); }
+  set hass(h) { this._hass = h; if (this._form) this._form.hass = h; }
+  _render() {
+    if (!this._config) return;
+    if (customElements.get("ha-form")) {
+      if (!this._form) {
+        this._form = document.createElement("ha-form");
+        this._form.computeLabel = (s) => ED_LABELS[s.name] || s.name;
+        this._form.addEventListener("value-changed", (e) => {
+          e.stopPropagation();
+          this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: e.detail.value }, bubbles: true, composed: true }));
+        });
+        this.appendChild(this._form);
+      }
+      this._form.hass = this._hass;
+      this._form.schema = jmaEditorSchema(this._config.type);
+      this._form.data = this._config;
+    } else {
+      this._fallback();
+    }
+  }
+  _fallback() {
+    if (this._fb) return;
+    this._fb = true;
+    const mk = (key, label, ph) => {
+      const w = document.createElement("div");
+      w.style.cssText = "margin:8px 0;display:flex;flex-direction:column;gap:4px;";
+      const l = document.createElement("label"); l.textContent = label;
+      l.style.cssText = "font-size:.8rem;opacity:.7;";
+      const i = document.createElement("input"); i.value = this._config[key] || ""; i.placeholder = ph || "";
+      i.style.cssText = "padding:8px;border-radius:8px;border:1px solid var(--divider-color,#ccc);background:var(--card-background-color,#fff);color:var(--primary-text-color,#000);";
+      i.addEventListener("input", () => {
+        const c = { ...this._config, [key]: i.value || undefined }; this._config = c;
+        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: c }, bubbles: true, composed: true }));
+      });
+      w.append(l, i); return w;
+    };
+    this.append(mk("entity", "Entité (entity_id)", "light.salon"), mk("name", "Nom"),
+      mk("icon", "Icône (mdi:…)"), mk("color", "Couleur d'accent", "#f8a5c2"), mk("accent", "Couleur secondaire", "#DEC198"));
+  }
+}
+customElements.define("jma-card-editor", JmaCardEditor);
+
+// =============================================================================
+//  TOASTS (notifications popup iOS)
+// =============================================================================
+function jmaToast(opts) {
+  opts = typeof opts === "string" ? { message: opts } : (opts || {});
+  const { title, message, icon = "mdi:bell", color = ROSE, duration = 4000 } = opts;
+  let wrap = document.getElementById("jma-toast-wrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "jma-toast-wrap";
+    wrap.style.cssText = "position:fixed;top:max(12px,env(safe-area-inset-top));left:0;right:0;z-index:10000;" +
+      "display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;";
+    document.body.appendChild(wrap);
+  }
+  const t = document.createElement("div");
+  t.style.cssText = "pointer-events:auto;max-width:440px;width:calc(100% - 24px);box-sizing:border-box;" +
+    "display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:16px;cursor:pointer;" +
+    "background:rgba(28,28,30,.92);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);" +
+    "color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.08);" +
+    "transform:translateY(-16px);opacity:0;transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .3s ease;";
+  t.innerHTML =
+    `<div style="width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:${color}22;">` +
+    `<ha-icon icon="${icon}" style="--mdc-icon-size:20px;color:${color};"></ha-icon></div>` +
+    `<div style="min-width:0;flex:1;">` +
+    (title ? `<div style="font-weight:700;font-size:.9rem;line-height:1.15;">${title}</div>` : "") +
+    `<div style="font-size:.8rem;opacity:.85;line-height:1.2;">${message || ""}</div></div>`;
+  wrap.appendChild(t);
+  requestAnimationFrame(() => { t.style.transform = "translateY(0)"; t.style.opacity = "1"; });
+  const close = () => { t.style.transform = "translateY(-16px)"; t.style.opacity = "0"; setTimeout(() => t.remove(), 320); };
+  t.addEventListener("click", close);
+  if (duration > 0) setTimeout(close, duration);
+  return close;
+}
+window.jmaToast = jmaToast;
+
+// =============================================================================
+//  🔔 CARTE NOTIFICATIONS (persistent_notification) + toasts auto
+// =============================================================================
+class JmaNotifyCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._seen = new Set(); this._subbed = false; this._ever = false; }
+  setConfig(c) { this._config = c || {}; }
+  getCardSize() { return 1; }
+  static getStubConfig() { return { title: "Notifications" }; }
+  set hass(h) { this._hass = h; if (!this._built) this._build(); if (!this._subbed) this._subscribe(); }
+  _build() {
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${ROSE};--jma-beige:${BEIGE};--jma-dark:${DARK};}
+        .cnt{min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--jma-rose);color:var(--jma-dark);
+          font-weight:800;font-size:.74rem;display:none;align-items:center;justify-content:center;flex:none;}
+        .cnt.show{display:flex;}
+        #list{display:flex;flex-direction:column;gap:6px;}
+        .ntf{display:flex;gap:8px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:11px;padding:8px 10px;}
+        .nt{font-weight:700;font-size:.78rem;}
+        .nm{font-size:.72rem;opacity:.72;white-space:normal;overflow:hidden;}
+        .nx{margin-left:auto;border:none;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;cursor:pointer;
+          width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;}
+        .empty{font-size:.74rem;opacity:.55;padding:2px;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="top"><div class="badge"><ha-icon id="bic" icon="mdi:bell-outline"></ha-icon></div>
+          <div class="meta"><div class="name">${this._config.title || "Notifications"}</div><div class="sub" id="sub">—</div></div>
+          <div class="cnt" id="cnt"></div></div>
+        <div id="list"></div>
+      </div></div></ha-card>`;
+    this._built = true;
+  }
+  async _subscribe() {
+    if (!this._hass || !this._hass.connection) return;
+    this._subbed = true;
+    try {
+      await this._fetch();
+      this._hass.connection.subscribeEvents(() => this._fetch(), "persistent_notifications_updated");
+    } catch (e) { /* websocket indispo */ }
+  }
+  async _fetch() {
+    try {
+      const res = await this._hass.callWS({ type: "persistent_notification/get" });
+      this._render(Array.isArray(res) ? res : Object.values(res || {}));
+    } catch (e) { this._render([]); }
+  }
+  _render(arr) {
+    if (!this._built) return;
+    const list = this.shadowRoot.getElementById("list");
+    const sub = this.shadowRoot.getElementById("sub");
+    const cnt = this.shadowRoot.getElementById("cnt");
+    list.innerHTML = "";
+    cnt.classList.toggle("show", arr.length > 0);
+    cnt.textContent = arr.length;
+    sub.textContent = arr.length ? arr.length + " active" + (arr.length > 1 ? "s" : "") : "Aucune notification";
+    this.shadowRoot.getElementById("bic").setAttribute("icon", arr.length ? "mdi:bell-badge" : "mdi:bell-outline");
+    if (!arr.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Tout est lu 🎉"; list.appendChild(e); }
+    arr.forEach((n) => {
+      const id = n.notification_id || n.id;
+      const row = document.createElement("div"); row.className = "ntf";
+      row.innerHTML = `<div style="min-width:0;flex:1;"><div class="nt">${n.title || "Notification"}</div>` +
+        `<div class="nm">${(n.message || "").toString().slice(0, 180)}</div></div>` +
+        `<button class="nx" title="Rejeter"><ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon></button>`;
+      row.querySelector(".nx").addEventListener("click", () =>
+        this._hass.callService("persistent_notification", "dismiss", { notification_id: id }));
+      list.appendChild(row);
+      if (id && !this._seen.has(id)) {
+        this._seen.add(id);
+        if (this._ever) jmaToast({ title: n.title || "Notification", message: (n.message || "").toString().slice(0, 120), icon: "mdi:bell-ring", color: ROSE });
+      }
+    });
+    this._ever = true;
+  }
+}
+customElements.define("jma-notify-card", JmaNotifyCard);
+
+// =============================================================================
 window.customCards = window.customCards || [];
 const REG = (type, name, description) => window.customCards.push({ type, name, description, preview: true });
 REG("jma-card", "JMA Card (auto)", "Carte universelle flat/iOS : slider horizontal + pop-up.");
@@ -1105,6 +1307,7 @@ REG("jma-media-card", "JMA Média", "Lecteur média : transport + volume.");
 REG("jma-vacuum-card", "JMA Aspirateur", "Aspirateur : Start / Pause / Dock.");
 REG("jma-scene-card", "JMA Scène", "Scène / script : bouton d'activation.");
 REG("jma-alarm-card", "JMA Alarme", "Alarme : Désarmer / Maison / Absent.");
+REG("jma-notify-card", "JMA Notifications", "Notifications persistantes + toasts popup auto.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,

@@ -22,16 +22,14 @@ avec un **slider horizontal** (barre à glisser distincte, façon app Maison iOS
 > Appui long = pop-up de contrôle détaillé.
 
 ## ✨ Fonctions
-- **Slider horizontal** : une barre dédiée en bas de la carte, glisse de gauche à droite pour régler la valeur (le reste de la carte reste cliquable pour le toggle).
-- **Pop-up de contrôle custom** (long-press) : bottom-sheet iOS avec grands sliders,
-  nuancier de couleurs (lumières), modes (clim), transport (média), boutons volet.
-- **Tap** : toggle (lumière/switch), play/pause (média), ouvre/ferme (volet), active (scène/script).
-- **Auto-détection** de la dimension selon le domaine de l'entité.
-- **États dynamiques** : allumé → teinté rose, éteint → gris.
-- Micro-animations : hover scale, ripple au clic, vibration au long-press.
-- **Responsive** (320px → desktop), s'intègre dans n'importe quelle grille.
+- **Clic simple = pop-up** de contrôle (bottom-sheet iOS : sliders, couleurs, modes, transport…). **Appui long = fiche HA**.
+- **Contrôles inline** : slider horizontal, boutons (volet/média/aspirateur/alarme), pastille on/off (switch) — agissent directement sans ouvrir le pop-up.
+- **Éditeur visuel** : en mode édition du dashboard, clic sur la carte → formulaire natif (entité, nom, icône, couleurs, options).
+- **Toasts de notification** (`custom:jma-notify-card` + `window.jmaToast(...)`) : pop-ups iOS en haut de l'écran, et surfaçage des notifications persistantes HA.
+- **Compact** : tuiles basses, jamais trop grosses ; **responsive** (320px → desktop).
+- **États dynamiques** : teinte de la couleur réelle des lampes, pochette média en fond, « indisponible » estompé.
 
-> `hold_action: popup` (défaut) · `more-info` · `none`
+> `tap_action: popup` (défaut) · `more-info` · `none`
 
 ## 📦 Entités supportées
 `light` (luminosité) · `media_player` (volume) · `cover` (position) · `climate` (consigne) ·
