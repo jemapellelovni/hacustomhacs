@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.11.2";
+const VERSION = "0.12.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1141,11 +1141,12 @@ class JmaPopup extends HTMLElement {
     }
   }
   _evState() {
-    const ch = this._config.charging_entity && this._hass.states[this._config.charging_entity];
-    const pl = this._config.plug_entity && this._hass.states[this._config.plug_entity];
-    if (ch && ch.state === "on") return "En charge";
-    if (pl && pl.state === "on") return "Branchée";
-    return "Débranchée";
+    const g = (k) => this._config[k] && this._hass.states[this._config[k]];
+    const ch = g("charging_entity"), pl = g("plug_entity"), cl = g("climate_active_entity"), mv = g("moving_entity");
+    let base = (mv && (mv.state === "on" || mv.state === "moving")) ? "En route"
+      : (ch && ch.state === "on") ? "En charge" : (pl && pl.state === "on") ? "Branchée" : "Débranchée";
+    if (cl && cl.state === "on") base += " · ❄️ Clim en cours";
+    return base;
   }
   _press(ent) {
     const d = ent.split(".")[0];
@@ -1298,6 +1299,12 @@ class JmaPopup extends HTMLElement {
     const range = num("range_entity"); if (range != null) cells.push(["Autonomie", Math.round(range) + " km"]);
     const rem = num("remaining_entity"); if (rem != null && rem > 0) cells.push(["Charge restante", Math.round(rem) + " min"]);
     cells.push(["État", this._evState()]);
+    const txt = (k) => { const s = g(k); return s && !["unknown", "unavailable", ""].includes(s.state) ? s.state : null; };
+    const clim = g("climate_active_entity"); if (clim) cells.push(["Climatisation", clim.state === "on" ? "En cours ❄️" : "Arrêtée"]);
+    const moveE = g("moving_entity"); if (moveE) cells.push(["Mouvement", (moveE.state === "on" || moveE.state === "moving") ? "En route 🚗" : "À l'arrêt"]);
+    const branch = txt("plug_state_entity"); if (branch) cells.push(["Branchement", branch]);
+    const mode = txt("charging_mode_entity"); if (mode) cells.push(["Mode de charge", mode]);
+    const cs = txt("charge_state_entity"); if (cs) cells.push(["État de charge", cs]);
     const bt = num("battery_temp_entity"); if (bt != null) cells.push(["Temp. batterie", bt + " °C"]);
     const et = num("ext_temp_entity"); if (et != null) cells.push(["Temp. ext.", et + " °C"]);
     const mil = num("mileage_entity"); if (mil != null) cells.push(["Kilométrage", Math.round(mil) + " km"]);
@@ -1307,6 +1314,11 @@ class JmaPopup extends HTMLElement {
     const kv = document.createElement("div"); kv.className = "row kv";
     kv.innerHTML = cells.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
     body.appendChild(kv);
+    const loc = this._config.location_entity && this._hass.states[this._config.location_entity];
+    if (loc) {
+      if (loc.attributes.latitude != null) { const mh = document.createElement("div"); mh.className = "row"; body.appendChild(mh); this._map(mh, [this._config.location_entity]); }
+      else { const x = document.createElement("div"); x.className = "row"; x.innerHTML = `<div class="lbl"><span>Localisation</span></div><div style="opacity:.6;font-size:.85rem;">Indisponible (non remontée par la voiture)</div>`; body.appendChild(x); }
+    }
     const row = document.createElement("div"); row.className = "row btns";
     const addB = (k, label, prim) => { if (!this._config[k]) return; const b = document.createElement("button"); b.className = "btn" + (prim ? " primary" : ""); b.textContent = label; b.addEventListener("click", () => this._press(this._config[k])); row.appendChild(b); };
     addB("charge_start", "Charger", true); addB("charge_stop", "Stopper"); addB("climate_button", "Climatisation");
@@ -1534,15 +1546,22 @@ class JmaEvCard extends HTMLElement {
     const rng = this._num("range_entity");
     const plug = this._g("plug_entity"), charging = this._g("charging_entity");
     const rem = this._num("remaining_entity");
+    const climA = this._g("climate_active_entity");
+    const climOn = climA && climA.state === "on";
+    const moveE = this._g("moving_entity");
+    const moving = moveE && (moveE.state === "on" || moveE.state === "moving" || (!isNaN(parseFloat(moveE.state)) && parseFloat(moveE.state) > 2));
     const isCharging = charging && charging.state === "on";
     const isPlugged = plug && plug.state === "on";
     this.shadowRoot.getElementById("pc").textContent = bat != null ? bat + "%" : "—";
     this.shadowRoot.getElementById("g").style.width = (bat != null ? Math.max(0, Math.min(100, bat)) : 0) + "%";
     this.shadowRoot.getElementById("rng").textContent = rng != null ? "⚡ " + Math.round(rng) + " km" : "";
-    this.shadowRoot.getElementById("eta").textContent = isCharging && rem != null ? "⏱ " + Math.round(rem) + " min" : "";
-    this.shadowRoot.getElementById("ic").setAttribute("icon", isCharging ? "mdi:battery-charging-high" : isPlugged ? "mdi:power-plug" : "mdi:car-electric");
-    this.shadowRoot.getElementById("sub").textContent = isCharging ? "En charge" : isPlugged ? "Branchée" : "Débranchée";
-    this.shadowRoot.getElementById("tile").classList.toggle("on", isCharging);
+    this.shadowRoot.getElementById("eta").textContent = climOn ? "❄️ Clim en cours" : (isCharging && rem != null ? "⏱ " + Math.round(rem) + " min" : "");
+    const icon = moving ? "mdi:car-arrow-right" : climOn ? "mdi:air-conditioner" : isCharging ? "mdi:battery-charging-high" : isPlugged ? "mdi:power-plug" : "mdi:car-electric";
+    this.shadowRoot.getElementById("ic").setAttribute("icon", icon);
+    this.shadowRoot.getElementById("sub").textContent = moving ? "En route" : isCharging ? "En charge" : isPlugged ? "Branchée" : "Débranchée";
+    this.shadowRoot.getElementById("tile").classList.toggle("on", isCharging || climOn || moving);
+    this.shadowRoot.querySelector(".badge").style.background = climOn ? "#40c4ff33" : "";
+    this.shadowRoot.getElementById("ic").style.color = climOn ? "#40c4ff" : "";
   }
 }
 customElements.define("jma-ev-card", JmaEvCard);
@@ -1919,6 +1938,8 @@ const ED_LABELS = {
   mileage_entity: "Kilométrage", tire_fl: "Pneu avant gauche", tire_fr: "Pneu avant droit",
   tire_rl: "Pneu arrière gauche", tire_rr: "Pneu arrière droit",
   charge_start: "Bouton démarrer charge", charge_stop: "Bouton arrêter charge", climate_button: "Bouton climatisation",
+  climate_active_entity: "Capteur clim en cours", moving_entity: "Capteur en mouvement", location_entity: "Localisation (device_tracker)",
+  plug_state_entity: "État du branchement", charging_mode_entity: "Mode de charge", charge_state_entity: "État de charge",
   production_entity: "Production solaire (W)", grid_entity: "Réseau EDF (W)", consumption_entity: "Consommation maison (W)",
   grid_color: "Couleur EDF", occupancy_entity: "Capteur présence", person_count_entity: "Comptage personnes",
   persons: "Personnes", battery_entities: "Capteurs batterie (ordre des personnes)",
@@ -1938,6 +1959,8 @@ function jmaEditorSchema(type) {
   if (t === "custom:jma-ev-card") return [
     txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
     ent("plug_entity", "binary_sensor"), ent("charging_entity", "binary_sensor"), ent("remaining_entity", "sensor"),
+    ent("climate_active_entity", "binary_sensor"), ent("moving_entity"), ent("location_entity", "device_tracker"),
+    ent("plug_state_entity", "sensor"), ent("charging_mode_entity", "sensor"), ent("charge_state_entity", "sensor"),
     ent("battery_temp_entity", "sensor"), ent("ext_temp_entity", "sensor"), ent("mileage_entity", "sensor"),
     ent("tire_fl", "sensor"), ent("tire_fr", "sensor"), ent("tire_rl", "sensor"), ent("tire_rr", "sensor"),
     ent("charge_start", "button"), ent("charge_stop", "button"), ent("climate_button", "button"),
