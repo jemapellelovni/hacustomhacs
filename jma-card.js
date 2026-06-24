@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.30.0";
+const VERSION = "0.31.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -2904,133 +2904,64 @@ class JmaRoomCard extends HTMLElement {
   }
   _build() {
     const c = this._config;
-    let body = `<div class="rhead"><div class="badge rbig" id="rbadge"><ha-icon icon="${c.icon}"></ha-icon></div>
-      <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sum"></div></div></div>
-      <div class="ramb" id="amb"></div>`;
-    if (this._lights.length) body += `<div class="qsec" id="lsec">
-      <button class="lightbtn" id="lbtn"><span class="lic"><ha-icon icon="mdi:lightbulb-group"></ha-icon></span>
-        <span class="ltxt"><b id="ltitle">Lumières</b><small id="lsub"></small></span>
-        <span class="ltog" id="ltog"><ha-icon icon="mdi:power"></ha-icon></span></button>
-      <div id="lwrap"></div></div>`;
-    if (this._climate) body += `<div class="qsec climrow"><button class="qicon" id="climicon"><ha-icon icon="mdi:thermostat"></ha-icon></button>
-      <div class="qmeta"><b id="climname">Climat</b><small id="climsub"></small></div>
-      <div class="therm"><button class="step" id="cdn"><ha-icon icon="mdi:minus"></ha-icon></button>
-        <div class="set" id="cset">—</div><button class="step" id="cup"><ha-icon icon="mdi:plus"></ha-icon></button></div></div>`;
-    if (this._cover) body += `<div class="qsec coverrow"><button class="qicon" id="covicon"><ha-icon icon="mdi:window-shutter"></ha-icon></button>
-      <div class="qmeta"><b>Volet</b><small id="covsub"></small></div>
-      <div class="btnrow cv"><button class="cbtn covb" id="covup"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
-        <button class="cbtn covb" id="covstop"><ha-icon icon="mdi:stop"></ha-icon></button>
-        <button class="cbtn covb" id="covdn"><ha-icon icon="mdi:arrow-down"></ha-icon></button></div></div>`;
-    if (this._media) body += `<div class="qsec mediarow" id="msec"><button class="qicon" id="micon"><ha-icon icon="mdi:music"></ha-icon></button>
-      <div class="qmeta mclick" id="mclick"><b id="mtitle">—</b><small id="msub"></small></div>
-      <div class="btnrow mc"><button class="cbtn covb" id="mprev"><ha-icon icon="mdi:skip-previous"></ha-icon></button>
-        <button class="cbtn covb accent" id="mpp"><ha-icon icon="mdi:play"></ha-icon></button>
-        <button class="cbtn covb" id="mnext"><ha-icon icon="mdi:skip-next"></ha-icon></button></div></div>`;
-    if (this._scenes.length) body += `<div class="chips" id="scenes"></div>`;
-    if (this._extra.length) body += `<div class="grid" id="grid"></div>`;
-
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .tile.room{flex-direction:column;align-items:stretch;gap:11px;padding:14px;}
-        .rhead{display:flex;align-items:center;gap:11px;}
-        .badge.rbig{width:42px;height:42px;}.badge.rbig ha-icon{--mdc-icon-size:24px;}
+        .tile.room{flex-direction:column;align-items:stretch;gap:10px;padding:13px;}
+        .rhead{display:flex;align-items:center;gap:10px;cursor:pointer;}
+        .badge.rbig{width:38px;height:38px;}.badge.rbig ha-icon{--mdc-icon-size:22px;}
         .tile.alive .badge.rbig{background:var(--jma-grad);}.tile.alive .badge.rbig ha-icon{color:var(--jma-dark);}
-        .name{font-size:1.02rem;}
-        .ramb{display:flex;gap:6px;flex-wrap:wrap;}
-        .pill2{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:11px;background:var(--jma-surf3);font-size:.74rem;font-weight:700;}
-        .pill2 ha-icon{--mdc-icon-size:15px;color:var(--jma-icon);}
-        .pill2.warn{color:#e9871f;}.pill2.cold ha-icon{color:var(--jma-blue);}
-        .qsec{display:flex;align-items:center;gap:10px;}
-        .lightbtn{flex:1;display:flex;align-items:center;gap:11px;padding:11px 12px;border:none;border-radius:15px;cursor:pointer;
-          background:var(--jma-surf3);color:var(--jma-text);transition:background .25s,transform .08s;text-align:left;width:100%;}
-        .lightbtn:active{transform:scale(.985);}
-        .lightbtn.on{background:var(--jma-grad);color:var(--jma-dark);}
-        .lic{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.06);flex:none;}
-        .lightbtn.on .lic{background:rgba(255,255,255,.25);}
-        .lic ha-icon{--mdc-icon-size:19px;}
-        .lightbtn.on .lic ha-icon{animation:jma-glow 2.6s ease-in-out infinite;}
-        @keyframes jma-glow{0%,100%{opacity:.8;}50%{opacity:1;filter:drop-shadow(0 0 6px rgba(255,255,255,.9));}}
-        .ltxt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15;}
-        .ltxt b{font-weight:700;font-size:.9rem;}.ltxt small{font-size:.72rem;opacity:.7;}
-        .ltog{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;background:rgba(0,0,0,.06);}
-        .lightbtn.on .ltog{background:rgba(255,255,255,.28);}.ltog ha-icon{--mdc-icon-size:17px;}
-        #lwrap{flex:1.2;}#lwrap .slider{height:34px;}
-        .qicon{width:38px;height:38px;border-radius:12px;border:none;cursor:pointer;flex:none;background:var(--jma-surf3);color:var(--jma-icon);display:flex;align-items:center;justify-content:center;}
-        .qicon ha-icon{--mdc-icon-size:20px;}.qicon.on{background:var(--jma-grad);color:var(--jma-dark);}
-        .qmeta{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15;}
-        .qmeta b{font-weight:700;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .qmeta small{font-size:.72rem;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .mclick{cursor:pointer;}
-        .therm{gap:6px;flex:none;}.set{font-size:1.05rem;min-width:46px;}
-        .btnrow.cv,.btnrow.mc{flex:none;gap:5px;}.btnrow.cv .cbtn,.btnrow.mc .cbtn{min-width:38px;flex:none;}
-        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;}
-        .e{background:var(--jma-surf3);border:none;border-radius:12px;padding:8px 4px;cursor:pointer;display:flex;
-          flex-direction:column;align-items:center;gap:3px;color:var(--jma-text);transition:background .2s,transform .08s;}
-        .e:active{transform:scale(.92);}.e.on{background:var(--jma-grad);color:var(--jma-dark);}
-        .e ha-icon{--mdc-icon-size:21px;}
-        .e span{font-size:.6rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .name{font-size:.98rem;}
+        .ramb{display:flex;gap:5px;flex-wrap:wrap;}
+        .pill2{display:flex;align-items:center;gap:4px;padding:4px 9px;border-radius:10px;background:var(--jma-surf3);font-size:.72rem;font-weight:700;}
+        .pill2 ha-icon{--mdc-icon-size:14px;color:var(--jma-icon);}
+        .pill2.warn ha-icon{color:#e9871f;}.pill2.cold ha-icon{color:var(--jma-blue);}
+        .cgrid{display:flex;flex-wrap:wrap;gap:6px;}
+        .c{flex:1 1 132px;min-width:116px;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:13px;border:none;
+          cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);transition:background .25s,transform .08s;}
+        .c:active{transform:scale(.95);}
+        .c.on{background:var(--jma-grad);color:var(--jma-dark);}
+        .c>ha-icon{--mdc-icon-size:20px;flex:none;}
+        .cl{display:flex;flex-direction:column;min-width:0;line-height:1.12;text-align:left;}
+        .cn{font-size:.79rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .cv{font-size:.65rem;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .c.glow.on>ha-icon{animation:jma-glow 2.6s ease-in-out infinite;}
+        @keyframes jma-glow{0%,100%{opacity:.85;}50%{opacity:1;filter:drop-shadow(0 0 6px rgba(255,255,255,.9));}}
       </style>
-      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile room" id="tile"><div class="content" style="gap:11px;">
-        ${body}
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile room" id="tile"><div class="content" style="gap:10px;">
+        <div class="rhead" id="rhead"><div class="badge rbig"><ha-icon icon="${c.icon}"></ha-icon></div>
+          <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sum"></div></div></div>
+        <div class="ramb" id="amb"></div>
+        <div class="cgrid" id="cgrid"></div>
       </div></div></ha-card>`;
-    this._wire();
+    const grid = this.shadowRoot.getElementById("cgrid");
+    this._chips = [];
+    const add = (role, entity, icon, label, onTap, extra) => {
+      const b = document.createElement("button"); b.className = "c" + (extra ? " " + extra : ""); b.tabIndex = 0;
+      b.innerHTML = `<ha-icon icon="${icon}"></ha-icon><span class="cl"><b class="cn">${label}</b><small class="cv"></small></span>`;
+      b.addEventListener("click", onTap); grid.appendChild(b);
+      this._chips.push({ el: b, role, entity, val: b.querySelector(".cv"), nm: b.querySelector(".cn"), ic: b.querySelector("ha-icon") });
+    };
+    this.shadowRoot.getElementById("rhead").addEventListener("click", () => this._openPopup(this._climate || this._media || this._lights[0]));
+    if (this._lights.length) add("lights", null, "mdi:lightbulb-group", "Lumières", () => {
+      const anyOn = this._lights.some((e) => { const s = this._st(e); return s && s.state === "on"; });
+      this._call("homeassistant", anyOn ? "turn_off" : "turn_on", { entity_id: this._lights });
+    }, "glow");
+    if (this._climate) add("climate", this._climate, "mdi:thermostat", "Climat", () => this._openPopup(this._climate));
+    if (this._cover) add("cover", this._cover, "mdi:window-shutter", "Volet", () => this._openPopup(this._cover));
+    if (this._media) add("media", this._media, "mdi:music", "Média", () => this._openPopup(this._media));
+    this._scenes.forEach((eid) => add("scene", eid, "mdi:palette", this._short(eid), () => {
+      this._call(eid.split(".")[0], "turn_on", { entity_id: eid });
+      if (window.jmaToast) jmaToast({ title: this._config.name, message: "▶ " + this._short(eid), icon: "mdi:palette", color: this._config.color });
+    }));
+    this._extra.forEach((eid) => {
+      const s = this._st(eid), a = s ? s.attributes : {};
+      const icon = (a && a.icon) || DC_ICON[a && a.device_class] || { light: "mdi:lightbulb", switch: "mdi:power-socket-eu", sensor: "mdi:eye", binary_sensor: "mdi:checkbox-blank-circle", lock: "mdi:lock", fan: "mdi:fan" }[eid.split(".")[0]] || "mdi:circle";
+      add("entity", eid, icon, this._short(eid), () => this._openPopup(eid));
+    });
   }
-  _wire() {
-    const $ = (id) => this.shadowRoot.getElementById(id);
-    $("rbadge") && $("rbadge").addEventListener("click", () => this._openPopup(this._climate || this._lights[0]));
-    if (this._lights.length) {
-      $("lbtn").addEventListener("click", () => {
-        const anyOn = this._lights.some((e) => { const s = this._st(e); return s && s.state === "on"; });
-        this._call("homeassistant", anyOn ? "turn_off" : "turn_on", { entity_id: this._lights });
-      });
-      this._lslider = jmaSlider({ icon: "mdi:brightness-6", fmt: (v) => v + "%", label: "Luminosité " + this._config.name,
-        onCommit: (v) => { const br = this._lights.filter((e) => this._briCap(this._st(e))); if (br.length) this._call("light", "turn_on", { entity_id: br, brightness_pct: v }); } });
-      this._lslider.hidden = true; $("lwrap").appendChild(this._lslider);
-    }
-    if (this._climate) {
-      const stepT = (d) => { const s = this._st(this._climate); if (!s) return; const cur = s.attributes.temperature; if (cur == null) return; const st = s.attributes.target_temp_step || .5; this._call("climate", "set_temperature", { entity_id: this._climate, temperature: Math.round((cur + d * st) * 10) / 10 }); };
-      $("cup").addEventListener("click", () => stepT(1)); $("cdn").addEventListener("click", () => stepT(-1));
-      $("climicon").addEventListener("click", () => this._openPopup(this._climate));
-    }
-    if (this._cover) {
-      $("covup").addEventListener("click", () => this._call("cover", "open_cover", { entity_id: this._cover }));
-      $("covstop").addEventListener("click", () => this._call("cover", "stop_cover", { entity_id: this._cover }));
-      $("covdn").addEventListener("click", () => this._call("cover", "close_cover", { entity_id: this._cover }));
-      $("covicon").addEventListener("click", () => this._openPopup(this._cover));
-    }
-    if (this._media) {
-      $("mpp").addEventListener("click", () => this._call("media_player", "media_play_pause", { entity_id: this._media }));
-      $("mprev").addEventListener("click", () => this._call("media_player", "media_previous_track", { entity_id: this._media }));
-      $("mnext").addEventListener("click", () => this._call("media_player", "media_next_track", { entity_id: this._media }));
-      $("mclick").addEventListener("click", () => this._openPopup(this._media));
-      $("micon").addEventListener("click", () => this._openPopup(this._media));
-    }
-    if (this._scenes.length) {
-      const sc = $("scenes");
-      this._scenes.forEach((eid) => {
-        const b = document.createElement("button"); b.className = "chip"; b.tabIndex = 0;
-        b.textContent = this._short(eid);
-        b.addEventListener("click", () => { const d = eid.split(".")[0]; this._call(d, d === "script" ? "turn_on" : "turn_on", { entity_id: eid }); if (window.jmaToast) jmaToast({ title: this._config.name, message: "▶ " + this._short(eid), icon: "mdi:palette", color: this._config.color }); });
-        sc.appendChild(b);
-      });
-    }
-    if (this._extra.length) {
-      const grid = $("grid");
-      this._extra.forEach((eid) => {
-        const b = document.createElement("button"); b.className = "e"; b.dataset.e = eid; b.tabIndex = 0;
-        const s = this._st(eid), a = s ? s.attributes : {};
-        const icon = (a && a.icon) || DC_ICON[a && a.device_class] || { light: "mdi:lightbulb", switch: "mdi:power-socket-eu", sensor: "mdi:eye", binary_sensor: "mdi:checkbox-blank-circle", lock: "mdi:lock", fan: "mdi:fan" }[eid.split(".")[0]] || "mdi:circle";
-        b.innerHTML = `<ha-icon icon="${icon}"></ha-icon><span>${this._short(eid)}</span>`;
-        b.addEventListener("click", () => this._openPopup(eid));
-        grid.appendChild(b);
-      });
-    }
-  }
-  _briCap(s) { if (!s) return false; const m = s.attributes.supported_color_modes; return m ? m.some((x) => x !== "onoff") : s.attributes.brightness != null; }
   _badgeEl(icon, txt, cls) { return `<div class="pill2 ${cls || ""}"><ha-icon icon="${icon}"></ha-icon>${txt}</div>`; }
   _update() {
-    const $ = (id) => this.shadowRoot.getElementById(id);
-    // badges ambiance
+    // badges d'ambiance
     const amb = [];
     const tS = this._st(this._config.temperature_entity);
     if (tS && !isNaN(parseFloat(tS.state))) { const t = parseFloat(tS.state); amb.push(this._badgeEl("mdi:thermometer", Math.round(t * 10) / 10 + "°", t <= 18 ? "cold" : t >= 25 ? "warn" : "")); }
@@ -3039,67 +2970,48 @@ class JmaRoomCard extends HTMLElement {
     const pS = this._st(this._config.presence_entity);
     if (pS) { const n = parseFloat(pS.state); const present = isNaN(n) ? pS.state === "on" : n > 0; amb.push(this._badgeEl(present ? "mdi:account" : "mdi:account-outline", isNaN(n) ? (present ? "Présent" : "Vide") : n + " pers.")); }
     this._badges.forEach((eid) => { const s = this._st(eid); if (s) amb.push(this._badgeEl(s.attributes.icon || "mdi:information-outline", s.state + (s.attributes.unit_of_measurement || ""))); });
-    if ($("amb")) $("amb").innerHTML = amb.join("");
+    const ambEl = this.shadowRoot.getElementById("amb"); if (ambEl) ambEl.innerHTML = amb.join("");
 
     let onCount = 0;
-    // lumières
-    if (this._lights.length) {
-      const onL = this._lights.filter((e) => { const s = this._st(e); return s && s.state === "on"; });
-      onCount = onL.length;
-      const lbtn = $("lbtn"); lbtn.classList.toggle("on", onCount > 0);
-      $("lsub").textContent = onCount ? onCount + "/" + this._lights.length + " allumée" + (onCount > 1 ? "s" : "") : "Éteintes";
-      const briLights = onL.filter((e) => this._briCap(this._st(e)));
-      if (briLights.length) {
-        const avg = Math.round(briLights.reduce((a, e) => a + (this._st(e).attributes.brightness || 0) / 255 * 100, 0) / briLights.length);
-        this._lslider.hidden = false; this._lslider.setValue(avg);
-      } else if (this._lights.some((e) => this._briCap(this._st(e)))) {
-        this._lslider.hidden = false; this._lslider.setValue(0);
-      } else this._lslider.hidden = true;
-    }
-    // climat
-    if (this._climate) {
-      const s = this._st(this._climate);
-      if (s) {
-        $("cset").textContent = s.attributes.temperature != null ? s.attributes.temperature + "°" : "—";
+    (this._chips || []).forEach((ch) => {
+      if (ch.role === "lights") {
+        const onL = this._lights.filter((e) => { const s = this._st(e); return s && s.state === "on"; });
+        onCount += onL.length;
+        ch.el.classList.toggle("on", onL.length > 0);
+        ch.val.textContent = onL.length ? onL.length + "/" + this._lights.length + " allumée" + (onL.length > 1 ? "s" : "") : "Éteintes";
+      } else if (ch.role === "climate") {
+        const s = this._st(ch.entity); if (!s) return;
         const act = HVAC_ACTION_FR[s.attributes.hvac_action] || HVAC_FR[s.state] || s.state;
-        const cur = s.attributes.current_temperature != null ? "Actuel " + s.attributes.current_temperature + "° · " : "";
-        $("climsub").textContent = cur + act;
-        $("climicon").classList.toggle("on", s.state !== "off" && s.state !== "unavailable");
+        ch.val.textContent = (s.attributes.temperature != null ? s.attributes.temperature + "° · " : "") + act;
+        ch.el.classList.toggle("on", s.state !== "off" && s.state !== "unavailable");
+      } else if (ch.role === "cover") {
+        const s = this._st(ch.entity); if (!s) return;
+        const p = s.attributes.current_position;
+        ch.val.textContent = p != null ? p + "% ouvert" : (s.state === "open" ? "Ouvert" : s.state === "closed" ? "Fermé" : s.state);
+        ch.el.classList.toggle("on", s.state === "open" || (p != null && p > 0));
+      } else if (ch.role === "media") {
+        const s = this._st(ch.entity); if (!s) return;
+        ch.nm.textContent = s.attributes.media_title || "Média";
+        ch.val.textContent = s.attributes.media_artist || (s.state === "playing" ? "Lecture" : s.state === "paused" ? "Pause" : s.state === "off" ? "Éteint" : "À l'arrêt");
+        ch.ic.setAttribute("icon", s.state === "playing" ? "mdi:music-note" : "mdi:music");
+        ch.el.classList.toggle("on", ["playing", "paused", "on"].includes(s.state));
+      } else if (ch.role === "entity") {
+        const s = this._st(ch.entity); const d = ch.entity.split(".")[0];
+        const on = s && (d === "cover" ? s.state === "open" : d === "media_player" ? ["playing", "paused", "on"].includes(s.state) : d === "climate" ? (s.state !== "off" && s.state !== "unavailable") : s.state === "on");
+        ch.el.classList.toggle("on", !!on);
+        if (s && ["sensor", "binary_sensor"].includes(d)) ch.val.textContent = s.state + (s.attributes.unit_of_measurement || "");
+        if (on && ["light", "switch", "fan", "input_boolean"].includes(d)) onCount++;
       }
-    }
-    // volet
-    if (this._cover) {
-      const s = this._st(this._cover);
-      if (s) { const p = s.attributes.current_position; $("covsub").textContent = p != null ? p + "% ouvert" : (s.state === "open" ? "Ouvert" : s.state === "closed" ? "Fermé" : s.state); $("covicon").classList.toggle("on", s.state === "open" || (p != null && p > 0)); }
-    }
-    // média
-    if (this._media) {
-      const s = this._st(this._media);
-      if (s) {
-        const playing = s.state === "playing";
-        $("mtitle").textContent = s.attributes.media_title || (s.state === "off" ? "Éteint" : "À l'arrêt");
-        $("msub").textContent = s.attributes.media_artist || (this._st(this._media).attributes.friendly_name || "");
-        $("mpp").querySelector("ha-icon").setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
-        $("micon").classList.toggle("on", ["playing", "paused", "on"].includes(s.state));
-      }
-    }
-    // extra grid états
-    if (this._extra.length) this._extra.forEach((eid) => {
-      const b = this.shadowRoot.querySelector(`.e[data-e="${eid}"]`); if (!b) return;
-      const s = this._st(eid); const d = eid.split(".")[0];
-      const on = s && (d === "cover" ? s.state === "open" : d === "media_player" ? ["playing", "paused", "on"].includes(s.state) : d === "climate" ? (s.state !== "off" && s.state !== "unavailable") : s.state === "on");
-      b.classList.toggle("on", !!on);
-      if (on && ["light", "switch", "fan", "input_boolean"].includes(d)) onCount++;
     });
-    // résumé + vie de la pièce
-    const tile = $("tile");
-    const alive = onCount > 0 || (this._media && ["playing"].includes((this._st(this._media) || {}).state)) ||
-      (this._climate && (() => { const s = this._st(this._climate); return s && s.state !== "off" && s.state !== "unavailable"; })());
-    if (tile) tile.classList.toggle("alive", !!alive);
+    // vie de la pièce + résumé
+    const tile = this.shadowRoot.getElementById("tile");
+    const mediaPlaying = this._media && (this._st(this._media) || {}).state === "playing";
+    const climOn = this._climate && (() => { const s = this._st(this._climate); return s && s.state !== "off" && s.state !== "unavailable"; })();
+    if (tile) tile.classList.toggle("alive", !!(onCount > 0 || mediaPlaying || climOn));
     const parts = [];
     if (tS && !isNaN(parseFloat(tS.state))) parts.push(Math.round(parseFloat(tS.state)) + "°");
     parts.push(onCount ? onCount + " allumé" + (onCount > 1 ? "s" : "") : "Tout calme");
-    if ($("sum")) $("sum").textContent = parts.join(" · ");
+    const sum = this.shadowRoot.getElementById("sum"); if (sum) sum.textContent = parts.join(" · ");
   }
 }
 customElements.define("jma-room-card", JmaRoomCard);
