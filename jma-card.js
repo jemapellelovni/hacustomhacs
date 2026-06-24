@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.26.0";
+const VERSION = "0.27.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -189,7 +189,41 @@ async function jmaSparkline(host, hass, entity, hours, color) {
   } catch (e) { host.innerHTML = ""; }
 }
 
-const CARD_WRAP_OPEN = '<ha-card style="background:none;border:none;box-shadow:none;">';
+// sparkline multi-séries (échelle de valeur partagée) -> [{entity,color,fill?}]
+async function jmaSparklineMulti(host, hass, series, hours) {
+  if (!host || !hass || !series || !series.length) return;
+  try {
+    const ents = series.map((s) => s.entity).filter(Boolean);
+    if (!ents.length) { host.innerHTML = ""; return; }
+    const end = new Date(), start = new Date(Date.now() - (hours || 24) * 3600000);
+    const path = `history/period/${start.toISOString()}?end_time=${encodeURIComponent(end.toISOString())}` +
+      `&filter_entity_id=${ents.join(",")}&minimal_response&significant_changes_only`;
+    const res = await hass.callApi("GET", path);
+    const byEnt = {};
+    (res || []).forEach((arr) => { if (arr && arr.length) byEnt[arr[0].entity_id] = arr; });
+    const lines = series.map((s) => {
+      const arr = byEnt[s.entity] || [];
+      const pts = arr.map((p) => ({ t: new Date(p.last_changed || p.lc || p.lu).getTime(), v: parseFloat(p.state) }))
+        .filter((p) => !isNaN(p.v) && !isNaN(p.t));
+      return { ...s, pts };
+    }).filter((l) => l.pts.length > 1);
+    if (!lines.length) { host.innerHTML = ""; return; }
+    let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    lines.forEach((l) => l.pts.forEach((p) => { tMin = Math.min(tMin, p.t); tMax = Math.max(tMax, p.t); vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v); }));
+    if (vMin === vMax) { vMin -= 1; vMax += 1; }
+    const W = 200, H = 34, pad = 3;
+    const sx = (t) => pad + ((t - tMin) / (tMax - tMin || 1)) * (W - 2 * pad);
+    const sy = (v) => H - pad - ((v - vMin) / (vMax - vMin || 1)) * (H - 2 * pad);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+    lines.forEach((l) => {
+      const d = l.pts.map((p, i) => (i ? "L" : "M") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1)).join(" ");
+      if (l.fill) svg += `<path d="${d} L ${sx(l.pts[l.pts.length - 1].t).toFixed(1)} ${H - pad} L ${sx(l.pts[0].t).toFixed(1)} ${H - pad} Z" fill="${l.color}" opacity=".14"/>`;
+      svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    });
+    svg += `</svg>`;
+    host.innerHTML = svg;
+  } catch (e) { host.innerHTML = ""; }
+}
 
 // slider horizontal réutilisable -> renvoie un élément .slider avec .setValue(v) et .dragging
 function jmaSlider({ fmt, onCommit, onInput, icon }) {
@@ -2604,9 +2638,12 @@ class JmaEnergyCard extends HTMLElement {
     ic.setAttribute("icon", solarDom ? "mdi:solar-power" : "mdi:transmission-tower");
     ic.style.color = accent;
     this.shadowRoot.querySelector(".badge").style.background = accent + "33";
-    if (this._config.production_entity && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
+    if ((this._config.production_entity || this._config.grid_entity) && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
       this._sparkAt = Date.now();
-      jmaSparkline(this.shadowRoot.getElementById("espk"), this._hass, this._config.production_entity, 24, this._config.color);
+      jmaSparklineMulti(this.shadowRoot.getElementById("espk"), this._hass, [
+        { entity: this._config.production_entity, color: this._config.color, fill: true },
+        { entity: this._config.grid_entity, color: this._config.grid_color },
+      ], 24);
     }
   }
 }
