@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.63.0";
+const VERSION = "0.64.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4477,34 +4477,37 @@ class JmaSecurityCard extends HTMLElement {
     const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
-      .secpanel{display:flex;flex-direction:column;gap:12px;padding:14px;}
+      .secpanel{display:flex;flex-direction:column;gap:13px;padding:14px;box-sizing:border-box;max-width:100%;overflow:hidden;}
       .spa{display:flex;align-items:center;gap:12px;}
-      .spabadge{width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--jma-surf2);flex:none;transition:background .3s;}
+      .spabadge{width:50px;height:50px;border-radius:15px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;transition:background .3s;}
       .spabadge ha-icon{--mdc-icon-size:28px;color:var(--jma-icon);}
-      .spabadge.armed{background:var(--jma-grad);}.spabadge.armed ha-icon{color:var(--jma-dark);}
+      .spabadge.armed{background:linear-gradient(135deg,#34c759,#28a04a);}.spabadge.armed ha-icon{color:#fff;}
       .spabadge.trig{background:#ff3b30;animation:jma-pulse 1s infinite;}.spabadge.trig ha-icon{color:#fff;}
-      .spast b{font-weight:800;font-size:1.2rem;display:block;}.spast small{font-size:.78rem;opacity:.6;}
+      .spast b{font-weight:800;font-size:1.22rem;display:block;}.spast small{font-size:.78rem;opacity:.62;font-weight:600;}
       .sparm{display:flex;gap:7px;flex-wrap:wrap;}
-      .sparmb{flex:1;min-width:68px;padding:11px 6px;border:none;border-radius:13px;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);font-weight:700;font-size:.75rem;display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .08s;}
-      .sparmb:active{transform:scale(.95);}.sparmb ha-icon{--mdc-icon-size:20px;}.sparmb.on{background:var(--jma-grad);color:var(--jma-dark);}
-      .splbl{font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;opacity:.5;margin:5px 0 -3px;}
+      .sparmb{flex:1;min-width:64px;padding:11px 6px;border:1px solid var(--jma-surf3);border-radius:13px;cursor:pointer;background:transparent;color:var(--jma-text);font-weight:700;font-size:.75rem;display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .08s;}
+      .sparmb:active{transform:scale(.95);}.sparmb ha-icon{--mdc-icon-size:21px;}
+      .sparmb.on{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);box-shadow:0 3px 10px rgba(0,0,0,.08);}
+      .splbl{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--jma-text);opacity:.72;margin:7px 0 -3px;display:flex;align-items:center;gap:6px;}
+      .splbl::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--jma-rose);}
       .spzones{display:flex;gap:6px;flex-wrap:wrap;}
-      .spz{padding:7px 11px;border-radius:10px;background:var(--jma-surf3);color:var(--jma-text);font-size:.74rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;}
-      .spz ha-icon{--mdc-icon-size:14px;}.spz.armed{background:var(--jma-grad);color:var(--jma-dark);}
-      .spgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
-      .spi{display:flex;align-items:center;gap:8px;background:var(--jma-surf2);border-radius:12px;padding:8px 10px;border:1px solid transparent;transition:border-color .3s,background .3s;}
-      .spi .si{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;}
-      .spi .si ha-icon{--mdc-icon-size:16px;color:var(--jma-icon);}
-      .spi.ok .si ha-icon{color:#34c759;}
-      .spi.alert{border-color:rgba(255,59,48,.5);background:rgba(255,59,48,.1);}
-      .spi.alert .si{background:#ff3b30;}.spi.alert .si ha-icon{color:#fff;}
-      .spi.live{border-color:rgba(106,163,255,.5);background:rgba(106,163,255,.1);}
-      .spi.live .si{background:#6aa3ff;}.spi.live .si ha-icon{color:#fff;}
-      .spi.warn{border-color:rgba(255,159,10,.5);background:rgba(255,159,10,.1);}
-      .spi.warn .si{background:#ff9f0a;}.spi.warn .si ha-icon{color:#3a2400;}
-      .spi .sn{flex:1;min-width:0;font-weight:700;font-size:.77rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-      .spi .sv{font-size:.65rem;font-weight:800;opacity:.6;white-space:nowrap;}.spi.alert .sv{color:#ff5a4d;opacity:1;}
-      .spi.live .sv{color:#6aa3ff;opacity:1;}.spi.warn .sv{color:#ff9f0a;opacity:1;}
+      .spz{padding:8px 12px;border-radius:11px;background:transparent;border:1px solid var(--jma-surf3);color:var(--jma-text);font-size:.76rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;}
+      .spz ha-icon{--mdc-icon-size:15px;}.spz.armed{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);}
+      .spgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+      @media(max-width:620px){.spgrid{grid-template-columns:1fr;}}
+      .spi{display:flex;align-items:center;gap:9px;background:var(--jma-surf2);border-radius:13px;padding:9px 11px;border:1px solid var(--jma-surf3);min-width:0;transition:border-color .3s,background .3s;}
+      .spi .si{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;}
+      .spi .si ha-icon{--mdc-icon-size:17px;color:var(--jma-icon);}
+      .spi.ok .si{background:rgba(52,199,89,.16);}.spi.ok .si ha-icon{color:#34c759;}
+      .spi .sn{flex:1;min-width:0;font-weight:700;font-size:.8rem;color:var(--jma-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .spi .sv{font-size:.62rem;font-weight:800;white-space:nowrap;padding:3px 9px;border-radius:999px;background:var(--jma-surf3);color:var(--jma-icon);flex:none;}
+      .spi.ok .sv{background:rgba(52,199,89,.16);color:#2ba24a;}
+      .spi.alert{border-color:#ff3b30;background:rgba(255,59,48,.13);}
+      .spi.alert .si{background:#ff3b30;}.spi.alert .si ha-icon{color:#fff;}.spi.alert .sv{background:#ff3b30;color:#fff;}
+      .spi.live{border-color:#6aa3ff;background:rgba(106,163,255,.14);}
+      .spi.live .si{background:#6aa3ff;}.spi.live .si ha-icon{color:#fff;}.spi.live .sv{background:#6aa3ff;color:#fff;}
+      .spi.warn{border-color:#ff9f0a;background:rgba(255,159,10,.14);}
+      .spi.warn .si{background:#ff9f0a;}.spi.warn .si ha-icon{color:#3a2400;}.spi.warn .sv{background:#ff9f0a;color:#3a2400;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="secpanel">
         <div class="spa"><div class="spabadge" id="badge"><ha-icon id="bic" icon="mdi:shield-home"></ha-icon></div>
