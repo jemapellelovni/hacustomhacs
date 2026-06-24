@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -68,8 +68,8 @@ const BASE_CSS = `
   .tile.on .pill .knob{left:27px;}
 
   /* boutons de contrôle */
-  .btnrow{display:flex;gap:8px;}
-  .cbtn{flex:1;min-width:0;height:42px;border:none;border-radius:13px;cursor:pointer;
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
+  .cbtn{flex:1 1 auto;min-width:52px;height:42px;border:none;border-radius:13px;cursor:pointer;
     background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;
     font-weight:600;font-size:.8rem;transition:background .2s,transform .08s;}
   .cbtn:hover{background:rgba(248,165,194,.2);}
@@ -97,6 +97,13 @@ const BASE_CSS = `
     opacity:0;transform:scale(.3);}
   .tile.ripple::after{animation:jma-ripple .55s ease-out;}
   @keyframes jma-ripple{0%{opacity:.6;transform:scale(.3);}100%{opacity:0;transform:scale(1.6);}}
+
+  /* divers */
+  .tile.dim{opacity:.45;}
+  .art{position:absolute;inset:0;z-index:0;background-size:cover;background-position:center;
+    opacity:.22;filter:blur(8px) saturate(1.25);transition:opacity .4s,background-image .4s;}
+  .bigbat{display:flex;align-items:center;gap:2px;font-size:.8rem;font-weight:700;opacity:.85;flex:none;}
+  .bigbat ha-icon{--mdc-icon-size:18px;}
 `;
 
 const CARD_WRAP_OPEN = '<ha-card style="background:none;border:none;box-shadow:none;">';
@@ -238,6 +245,11 @@ class JmaBase extends HTMLElement {
     this.shadowRoot.querySelector(".name").textContent = (this._config.name || this._config.entity) + " (indispo)";
     const sub = this.shadowRoot.querySelector(".sub");
     if (sub) sub.textContent = "";
+    const tile = this.shadowRoot.querySelector(".tile");
+    if (tile) tile.classList.add("dim");
+  }
+  _dim(tile, s) {
+    if (tile) tile.classList.toggle("dim", !s || ["unavailable", "unknown"].includes(s.state));
   }
 }
 
@@ -264,15 +276,23 @@ class JmaLightCard extends JmaBase {
     const s = this._s;
     if (!s) return this._unavail();
     const on = s.state === "on";
+    const tile = this.shadowRoot.getElementById("tile");
     this.shadowRoot.querySelector(".ic").setAttribute("icon", this._icon(s, "mdi:lightbulb"));
     this.shadowRoot.querySelector(".name").textContent = this._name(s);
-    this.shadowRoot.getElementById("tile").classList.toggle("on", on);
+    tile.classList.toggle("on", on);
+    this._dim(tile, s);
     const modes = s.attributes.supported_color_modes || [];
     const hasBri = modes.length ? modes.some((m) => m !== "onoff") : s.attributes.brightness != null;
     const bri = s.attributes.brightness ? Math.round((s.attributes.brightness / 255) * 100) : 0;
     this._sl.hidden = !hasBri;
     if (hasBri) this._sl.setValue(on ? bri : 0);
     this.shadowRoot.querySelector(".sub").textContent = on ? (hasBri ? bri + " %" : "Allumé") : "Éteint";
+    // teinte avec la couleur réelle de la lampe (si allumée et colorée)
+    const rgb = on && Array.isArray(s.attributes.rgb_color) ? s.attributes.rgb_color : null;
+    const col = rgb ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : "";
+    this.shadowRoot.querySelector(".badge").style.background = col;
+    this.shadowRoot.querySelector(".ic").style.color = col ? "#0a0a0b" : "";
+    this._sl.querySelector(".sfill").style.background = col || "";
   }
 }
 
@@ -411,7 +431,7 @@ class JmaMediaCard extends JmaBase {
   static getStubConfig() { return { entity: "media_player.example" }; }
   _build() {
     this.shadowRoot.innerHTML = this._styleBlock() + CARD_WRAP_OPEN +
-      `<div class="tile flat"><div class="content">
+      `<div class="tile flat" id="tile"><div class="art"></div><div class="content">
          <div class="top"><div class="badge"><ha-icon class="ic"></ha-icon></div>
            <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
          <div class="btnrow">
@@ -432,16 +452,24 @@ class JmaMediaCard extends JmaBase {
   }
   _update() {
     const s = this._s;
+    const tile = this.shadowRoot.getElementById("tile");
     if (!s) return this._unavail();
     const a = s.attributes;
     const playing = s.state === "playing";
     this.shadowRoot.querySelector(".ic").setAttribute("icon", this._icon(s, "mdi:speaker"));
     this.shadowRoot.querySelector(".name").textContent = this._name(s);
-    this.shadowRoot.querySelector(".sub").textContent = a.media_title || a.source || s.state;
+    this.shadowRoot.querySelector(".sub").textContent =
+      a.media_title ? a.media_title + (a.media_artist ? " — " + a.media_artist : "") : a.source || s.state;
     this.shadowRoot.querySelector(".pp").setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
-    this.shadowRoot.querySelector(".tile").classList.toggle("on", ["playing", "paused", "on"].includes(s.state));
+    tile.classList.toggle("on", ["playing", "paused", "on"].includes(s.state));
+    this._dim(tile, s);
     if (a.volume_level != null) { this._sl.hidden = false; this._sl.setValue(Math.round(a.volume_level * 100)); }
     else this._sl.hidden = true;
+    // pochette en fond
+    const art = this.shadowRoot.querySelector(".art");
+    const pic = a.entity_picture;
+    if (pic && ["playing", "paused"].includes(s.state)) art.style.backgroundImage = `url("${pic}")`;
+    else art.style.backgroundImage = "";
   }
 }
 
@@ -452,13 +480,15 @@ class JmaVacuumCard extends JmaBase {
   static getStubConfig() { return { entity: "vacuum.example" }; }
   _build() {
     this.shadowRoot.innerHTML = this._styleBlock() + CARD_WRAP_OPEN +
-      `<div class="tile flat"><div class="content">
+      `<div class="tile flat" id="tile"><div class="content">
          <div class="top"><div class="badge"><ha-icon class="ic"></ha-icon></div>
-           <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
+           <div class="meta"><div class="name"></div><div class="sub"></div></div>
+           <div class="bigbat" hidden><ha-icon class="bic"></ha-icon><span class="bpc"></span></div></div>
          <div class="btnrow">
-           <button class="cbtn accent" data-a="start"><ha-icon icon="mdi:play"></ha-icon></button>
-           <button class="cbtn" data-a="pause"><ha-icon icon="mdi:pause"></ha-icon></button>
-           <button class="cbtn" data-a="return_to_base"><ha-icon icon="mdi:home-import-outline"></ha-icon></button>
+           <button class="cbtn accent" data-a="start" title="Démarrer"><ha-icon icon="mdi:play"></ha-icon></button>
+           <button class="cbtn" data-a="pause" title="Pause"><ha-icon icon="mdi:pause"></ha-icon></button>
+           <button class="cbtn" data-a="return_to_base" title="Base"><ha-icon icon="mdi:home-import-outline"></ha-icon></button>
+           <button class="cbtn" data-a="locate" title="Localiser"><ha-icon icon="mdi:map-marker"></ha-icon></button>
          </div>
        </div></div></ha-card>`;
     this._wireHold(this.shadowRoot.querySelector(".badge"), null);
@@ -466,8 +496,24 @@ class JmaVacuumCard extends JmaBase {
       b.addEventListener("click", () => this._call("vacuum", b.dataset.a, { entity_id: this._config.entity }))
     );
   }
+  _battery() {
+    const c = this._config;
+    if (c.battery_entity && this._hass.states[c.battery_entity]) {
+      const v = parseFloat(this._hass.states[c.battery_entity].state);
+      return isNaN(v) ? null : Math.round(v);
+    }
+    const a = this._s.attributes;
+    return a.battery_level != null ? a.battery_level : null;
+  }
+  _batIcon(p, charging) {
+    if (p == null) return "mdi:battery-unknown";
+    if (charging) return p >= 95 ? "mdi:battery-charging-100" : "mdi:battery-charging";
+    const r = Math.round(p / 10) * 10;
+    return r >= 100 ? "mdi:battery" : r <= 5 ? "mdi:battery-alert" : "mdi:battery-" + r;
+  }
   _update() {
     const s = this._s;
+    const tile = this.shadowRoot.getElementById("tile");
     if (!s) return this._unavail();
     const a = s.attributes;
     const active = ["cleaning", "returning"].includes(s.state);
@@ -477,10 +523,22 @@ class JmaVacuumCard extends JmaBase {
       cleaning: "Nettoyage", docked: "À la base", idle: "Inactif", paused: "En pause",
       returning: "Retour base", error: "Erreur",
     }[s.state] || s.state;
-    const bat = a.battery_level != null ? " · " + a.battery_level + "%" : "";
-    const fan = a.fan_speed ? " · " + a.fan_speed : "";
-    this.shadowRoot.querySelector(".sub").textContent = stateFR + bat + fan;
-    this.shadowRoot.querySelector(".tile").classList.toggle("on", active);
+    const fan = a.fan_speed && a.fan_speed !== "off" ? " · " + a.fan_speed : "";
+    const areaSt = this._config.area_entity && this._hass.states[this._config.area_entity];
+    const area = active && areaSt && !["unknown", "unavailable"].includes(areaSt.state) ? " · " + areaSt.state : "";
+    this.shadowRoot.querySelector(".sub").textContent = stateFR + fan + area;
+    // batterie (capteur dédié ou attribut)
+    const bat = this._battery();
+    const bb = this.shadowRoot.querySelector(".bigbat");
+    if (bat != null) {
+      bb.hidden = false;
+      this.shadowRoot.querySelector(".bic").setAttribute("icon", this._batIcon(bat, s.state === "docked"));
+      this.shadowRoot.querySelector(".bpc").textContent = bat + "%";
+    } else bb.hidden = true;
+    tile.classList.toggle("on", active);
+    this._dim(tile, s);
+    this.shadowRoot.querySelector('[data-a="start"]').classList.toggle("accent", !active);
+    this.shadowRoot.querySelector('[data-a="pause"]').classList.toggle("accent", active);
   }
 }
 
@@ -521,27 +579,45 @@ class JmaAlarmCard extends JmaBase {
   static getStubConfig() { return { entity: "alarm_control_panel.example" }; }
   _build() {
     this.shadowRoot.innerHTML = this._styleBlock() + CARD_WRAP_OPEN +
-      `<div class="tile flat"><div class="content">
+      `<div class="tile flat" id="tile"><div class="content">
          <div class="top"><div class="badge"><ha-icon class="ic"></ha-icon></div>
            <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
-         <div class="btnrow">
-           <button class="cbtn" data-a="alarm_disarm"><ha-icon icon="mdi:lock-open-variant"></ha-icon></button>
-           <button class="cbtn" data-a="alarm_arm_home"><ha-icon icon="mdi:home"></ha-icon></button>
-           <button class="cbtn" data-a="alarm_arm_away"><ha-icon icon="mdi:shield-lock"></ha-icon></button>
-         </div>
+         <div class="btnrow" id="row"></div>
        </div></div></ha-card>`;
     this._wireHold(this.shadowRoot.querySelector(".badge"), null);
-    this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
-      b.addEventListener("click", () => {
-        const data = { entity_id: this._config.entity };
-        if (this._config.code != null) data.code = String(this._config.code);
-        this._call("alarm_control_panel", b.dataset.a, data);
-      })
-    );
+    this._sig = null;
+  }
+  _modes() {
+    const feat = (this._s && this._s.attributes.supported_features) || 0;
+    const m = [["alarm_disarm", "Désarmer", "mdi:lock-open-variant", "disarmed"]];
+    if (feat & 1) m.push(["alarm_arm_home", "Maison", "mdi:home", "armed_home"]);
+    if (feat & 2) m.push(["alarm_arm_away", "Absent", "mdi:shield-lock", "armed_away"]);
+    if (feat & 4) m.push(["alarm_arm_night", "Nuit", "mdi:weather-night", "armed_night"]);
+    if (feat & 32) m.push(["alarm_arm_vacation", "Vacances", "mdi:bag-suitcase", "armed_vacation"]);
+    return m;
   }
   _update() {
     const s = this._s;
+    const tile = this.shadowRoot.getElementById("tile");
     if (!s) return this._unavail();
+    const modes = this._modes();
+    const sig = modes.map((x) => x[0]).join(",");
+    const row = this.shadowRoot.getElementById("row");
+    if (sig !== this._sig) {
+      this._sig = sig;
+      row.innerHTML = "";
+      modes.forEach(([svc, label, icon, state]) => {
+        const b = document.createElement("button");
+        b.className = "cbtn"; b.dataset.s = state; b.title = label;
+        b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>`;
+        b.addEventListener("click", () => {
+          const data = { entity_id: this._config.entity };
+          if (this._config.code != null) data.code = String(this._config.code);
+          this._call("alarm_control_panel", svc, data);
+        });
+        row.appendChild(b);
+      });
+    }
     const armed = s.state && s.state.startsWith("armed");
     const triggered = s.state === "triggered";
     const icon = triggered ? "mdi:alarm-light" : armed ? "mdi:shield-lock" : "mdi:shield-off-outline";
@@ -552,12 +628,10 @@ class JmaAlarmCard extends JmaBase {
       armed_vacation: "Vacances", arming: "Armement…", pending: "Délai…", triggered: "⚠ Déclenchée",
     }[s.state] || s.state;
     this.shadowRoot.querySelector(".sub").textContent = stateFR;
-    this.shadowRoot.querySelector(".tile").classList.toggle("on", armed || triggered);
-    // surligne le bouton actif
-    const map = { disarmed: "alarm_disarm", armed_home: "alarm_arm_home", armed_away: "alarm_arm_away" };
-    this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
-      b.classList.toggle("accent", b.dataset.a === map[s.state])
-    );
+    tile.classList.toggle("on", armed || triggered);
+    this.shadowRoot.querySelector(".badge").style.background = triggered ? "#ff5252" : "";
+    this._dim(tile, s);
+    row.querySelectorAll(".cbtn").forEach((b) => b.classList.toggle("accent", b.dataset.s === s.state));
   }
 }
 
