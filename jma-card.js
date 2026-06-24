@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.29.0";
+const VERSION = "0.29.1";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -254,6 +254,8 @@ async function jmaSparklineMulti(host, hass, series, hours) {
     host.innerHTML = svg;
   } catch (e) { host.innerHTML = ""; }
 }
+
+const CARD_WRAP_OPEN = '<ha-card style="background:none;border:none;box-shadow:none;">';
 
 // slider horizontal réutilisable -> renvoie un élément .slider avec .setValue(v) et .dragging
 function jmaSlider({ fmt, onCommit, onInput, icon, label }) {
