@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.58.0";
+const VERSION = "0.59.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3156,6 +3156,152 @@ class JmaAgendaCard extends HTMLElement {
   }
 }
 jmaDef("jma-agenda-card", JmaAgendaCard);
+// =============================================================================
+//  📅 CALENDRIER — vue mois complète (grille 7×6, météo du jour, détail au tap)
+// =============================================================================
+const JMA_WICON = { "sunny": "mdi:weather-sunny", "clear-night": "mdi:weather-night", "partlycloudy": "mdi:weather-partly-cloudy",
+  "cloudy": "mdi:weather-cloudy", "rainy": "mdi:weather-rainy", "pouring": "mdi:weather-pouring", "snowy": "mdi:weather-snowy",
+  "fog": "mdi:weather-fog", "windy": "mdi:weather-windy", "windy-variant": "mdi:weather-windy", "lightning": "mdi:weather-lightning",
+  "lightning-rainy": "mdi:weather-lightning-rainy", "hail": "mdi:weather-hail", "snowy-rainy": "mdi:weather-snowy-rainy", "exceptional": "mdi:alert" };
+class JmaCalendarCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._loading = false; this._wx = {}; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, title: "Agenda", ...c }; this._cals = c.entities || (c.entity ? [c.entity] : []); this._weather = c.weather_entity || null; }
+  getCardSize() { return 14; }
+  static getStubConfig() { return { title: "Agenda", entities: ["calendar.example"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); if (first) { this._cur = new Date(); this._cur.setDate(1); this._fetch(); this._fetchWeather(); } }
+  _dkey(d) { return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
+  _palette(i) { return ["#e98aa8", "#6aa3ff", "#4cc38a", "#f5b461", "#b794f6", "#4fd1c5"][i % 6]; }
+  _calName(eid) { const s = this._hass && this._hass.states[eid]; return (this._config.names && this._config.names[eid]) || (s && s.attributes.friendly_name) || eid.split(".")[1]; }
+  _gridRange() {
+    const f = new Date(this._cur.getFullYear(), this._cur.getMonth(), 1);
+    const off = (f.getDay() + 6) % 7; const start = new Date(f); start.setDate(f.getDate() - off); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(start.getDate() + 42); return { start, end };
+  }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};--cal-sheet:#fbf8f1;--cal-line:rgba(60,48,30,.1);}
+      :host(.dark){--cal-sheet:#1d1d20;--cal-line:rgba(255,255,255,.1);}
+      .cal{display:flex;flex-direction:column;height:100%;gap:9px;padding:4px 2px;}
+      .calhead{display:flex;align-items:center;gap:9px;}
+      .mtitle{font-weight:800;font-size:1.2rem;text-transform:capitalize;flex:1;letter-spacing:-.2px;}
+      .cbtn{height:34px;min-width:34px;border-radius:11px;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+      .cbtn:active{transform:scale(.92);}.cbtn ha-icon{--mdc-icon-size:21px;}
+      .cbtn.today{padding:0 13px;font-weight:800;font-size:.76rem;}
+      .callegend{display:flex;gap:12px;flex-wrap:wrap;}
+      .lg{display:flex;align-items:center;gap:5px;font-size:.66rem;font-weight:700;opacity:.7;}
+      .lg .dot{width:9px;height:9px;border-radius:3px;}
+      .cweekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+      .cwd{text-align:center;font-size:.62rem;font-weight:800;opacity:.45;text-transform:uppercase;letter-spacing:.6px;}
+      .cgrid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:5px;flex:1;min-height:0;}
+      .cell{background:var(--jma-surf2);border-radius:11px;padding:5px 6px;display:flex;flex-direction:column;gap:2px;cursor:pointer;overflow:hidden;border:1.5px solid transparent;transition:border-color .2s,background .2s;min-height:0;}
+      .cell:hover{border-color:var(--jma-surf4,rgba(0,0,0,.08));}
+      .cell.out{opacity:.38;}
+      .cell.today{border-color:var(--jma-rose);background:var(--jma-surf3);}
+      .cell.we .cdnum{opacity:.55;}
+      .cellhd{display:flex;align-items:center;justify-content:space-between;gap:3px;}
+      .cdnum{font-weight:800;font-size:.84rem;line-height:1.1;}
+      .cell.today .cdnum{color:var(--jma-rose);}
+      .cwx{display:flex;align-items:center;gap:1px;font-size:.6rem;opacity:.75;font-weight:800;flex:none;}
+      .cwx ha-icon{--mdc-icon-size:15px;}
+      .cev{font-size:.61rem;font-weight:700;border-radius:5px;padding:1px 5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.45;}
+      .cmore{font-size:.57rem;opacity:.55;font-weight:800;padding-left:2px;}
+      .calpop{position:fixed;inset:0;z-index:1100;background:rgba(20,16,10,.42);display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+      .calpop.on{display:flex;}
+      .calsheet{background:var(--cal-sheet);border:1px solid var(--cal-line);border-radius:22px;max-width:420px;width:calc(100% - 34px);max-height:72vh;overflow:auto;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.45);}
+      .cph{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+      .cph .d{font-weight:800;font-size:1.05rem;text-transform:capitalize;}
+      .cpx{width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);font-size:1rem;}
+      .cpev{display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--cal-line);}
+      .cpev:first-of-type{border-top:none;}
+      .cpbar{width:4px;align-self:stretch;border-radius:3px;flex:none;min-height:30px;}
+      .cpt{font-size:.72rem;font-weight:800;opacity:.7;min-width:42px;font-variant-numeric:tabular-nums;}
+      .cps{font-size:.86rem;font-weight:600;flex:1;}
+      .cpcal{font-size:.62rem;opacity:.5;font-weight:700;}
+      .cpempty{opacity:.5;font-size:.82rem;text-align:center;padding:20px 0;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;height:100%;"><div class="tile flat" style="height:100%;"><div class="content" style="height:100%;">
+        <div class="cal">
+          <div class="calhead">
+            <button class="cbtn" id="prev" aria-label="Mois précédent"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
+            <div class="mtitle" id="mtitle">—</div>
+            <button class="cbtn today" id="today">Aujourd'hui</button>
+            <button class="cbtn" id="next" aria-label="Mois suivant"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
+          </div>
+          <div class="callegend" id="legend"></div>
+          <div class="cweekdays">${["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((d) => `<div class="cwd">${d}</div>`).join("")}</div>
+          <div class="cgrid" id="cgrid"></div>
+        </div>
+      </div></div>
+      <div class="calpop" id="calpop"><div class="calsheet" id="calsheet"></div></div></ha-card>`;
+    this.shadowRoot.getElementById("prev").addEventListener("click", () => this._shift(-1));
+    this.shadowRoot.getElementById("next").addEventListener("click", () => this._shift(1));
+    this.shadowRoot.getElementById("today").addEventListener("click", () => { this._cur = new Date(); this._cur.setDate(1); this._fetch(); });
+    const pop = this.shadowRoot.getElementById("calpop");
+    pop.addEventListener("click", (e) => { if (e.target === pop) pop.classList.remove("on"); });
+  }
+  _shift(n) { this._cur = new Date(this._cur.getFullYear(), this._cur.getMonth() + n, 1); this._fetch(); }
+  async _fetch() {
+    if (!this._cals.length) { this._render(); return; }
+    this._loading = true; const { start, end } = this._gridRange(); const iso = (d) => d.toISOString();
+    const evs = [];
+    try {
+      for (let i = 0; i < this._cals.length; i++) {
+        const cal = this._cals[i];
+        const r = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(iso(start))}&end=${encodeURIComponent(iso(end))}`);
+        (r || []).forEach((e) => { const s = e.start && (e.start.dateTime || e.start.date); const d = new Date(s); if (!isNaN(d)) evs.push({ d, allday: !(e.start && e.start.dateTime), summary: e.summary || e.message || "(sans titre)", ci: i }); });
+      }
+    } catch (e) {}
+    this._loading = false; this._events = evs; this._render();
+  }
+  async _fetchWeather() {
+    if (!this._weather) return;
+    try {
+      const r = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type: "daily" }, target: { entity_id: this._weather }, return_response: true });
+      const fc = (r && r.response && r.response[this._weather] && r.response[this._weather].forecast) || [];
+      this._wx = {}; fc.forEach((f) => { const d = new Date(f.datetime); this._wx[this._dkey(d)] = { hi: Math.round(f.temperature), cond: f.condition }; });
+      this._render();
+    } catch (e) {}
+  }
+  _render() {
+    if (!this._built) return;
+    this.shadowRoot.getElementById("mtitle").textContent = this._cur.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    const lg = this.shadowRoot.getElementById("legend");
+    lg.innerHTML = this._cals.map((e, i) => `<div class="lg"><span class="dot" style="background:${this._palette(i)}"></span>${this._calName(e)}</div>`).join("");
+    const grid = this.shadowRoot.getElementById("cgrid"); grid.innerHTML = "";
+    const { start } = this._gridRange(); const curM = this._cur.getMonth();
+    const tk = this._dkey(new Date());
+    const byDay = {}; (this._events || []).forEach((ev) => { const k = this._dkey(ev.d); (byDay[k] = byDay[k] || []).push(ev); });
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i); const k = this._dkey(d);
+      const we = d.getDay() === 0 || d.getDay() === 6;
+      const cell = document.createElement("div");
+      cell.className = "cell" + (d.getMonth() !== curM ? " out" : "") + (k === tk ? " today" : "") + (we ? " we" : "");
+      const evs = (byDay[k] || []).sort((a, b) => a.d - b.d);
+      const wx = this._wx && this._wx[k];
+      let html = `<div class="cellhd"><span class="cdnum">${d.getDate()}</span>` + (wx ? `<span class="cwx"><ha-icon icon="${JMA_WICON[wx.cond] || "mdi:weather-cloudy"}"></ha-icon>${wx.hi}°</span>` : "") + `</div>`;
+      evs.slice(0, 3).forEach((ev) => { const t = ev.allday ? "" : ("" + ev.d.getHours()).padStart(2, "0") + ":" + ("" + ev.d.getMinutes()).padStart(2, "0") + " "; html += `<div class="cev" style="background:${this._palette(ev.ci)}">${t}${ev.summary}</div>`; });
+      if (evs.length > 3) html += `<div class="cmore">+${evs.length - 3}</div>`;
+      cell.innerHTML = html;
+      cell.addEventListener("click", () => this._openDay(d, evs));
+      grid.appendChild(cell);
+    }
+  }
+  _openDay(d, evs) {
+    const sheet = this.shadowRoot.getElementById("calsheet");
+    const dn = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    let h = `<div class="cph"><div class="d">${dn}</div><button class="cpx" id="cpx">✕</button></div>`;
+    if (!evs.length) h += `<div class="cpempty">Rien de prévu 🎉</div>`;
+    else evs.forEach((ev) => {
+      const t = ev.allday ? "Journée" : ("" + ev.d.getHours()).padStart(2, "0") + ":" + ("" + ev.d.getMinutes()).padStart(2, "0");
+      h += `<div class="cpev"><div class="cpbar" style="background:${this._palette(ev.ci)}"></div><div class="cpt">${t}</div><div class="cps">${ev.summary}<div class="cpcal">${this._calName(this._cals[ev.ci])}</div></div></div>`;
+    });
+    sheet.innerHTML = h;
+    sheet.querySelector("#cpx").addEventListener("click", () => this.shadowRoot.getElementById("calpop").classList.remove("on"));
+    this.shadowRoot.getElementById("calpop").classList.add("on");
+  }
+}
+jmaDef("jma-calendar-card", JmaCalendarCard);
 
 // =============================================================================
 //  ⚡ ÉNERGIE — conso & production (bleu EDF / rose solaire dominant)
@@ -4535,6 +4681,7 @@ REG("jma-bin-card", "JMA Poubelle", "Rappel sortie poubelle par jour de la semai
 REG("jma-camera-card", "JMA Caméra", "Flux caméra + présence/REC, pop-up agrandi.");
 REG("jma-presence-card", "JMA Présence", "Avatars présents/absents (personnes).");
 REG("jma-agenda-card", "JMA Agenda", "Événements calendrier, nb de jours configurable.");
+REG("jma-calendar-card", "JMA Calendrier", "Vue mois complète : grille, météo du jour, détail au tap.");
 REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solaire dominant.");
 REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jour.");
 REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
