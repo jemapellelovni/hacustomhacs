@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.24.0";
+const VERSION = "0.25.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -1198,6 +1198,8 @@ class JmaPopup extends HTMLElement {
         .pchip{padding:7px 11px;border-radius:11px;background:rgba(255,255,255,.1);border:none;color:#fff;cursor:pointer;font-size:.8rem;text-transform:capitalize;}
         .pchip.on{background:var(--jma-grad);color:var(--jma-dark);font-weight:700;}
         .camimg{width:100%;border-radius:16px;display:block;background:#000;aspect-ratio:16/9;object-fit:cover;}
+        .camlive{border-radius:16px;overflow:hidden;background:#000;}
+        .livecard{display:block;--ha-card-border-radius:16px;--ha-card-box-shadow:none;--ha-card-border-width:0;}
         .graph{--ha-card-background:transparent;--card-background-color:transparent;background:transparent;display:block;}
         .gw{position:relative;height:90px;touch-action:none;cursor:crosshair;}
         .gw svg{width:100%;height:100%;display:block;}
@@ -1677,7 +1679,57 @@ class JmaPopup extends HTMLElement {
       this._sSliders[eid] = sl;
       row.append(lk, nm, mute, sl); body.appendChild(row);
     });
+    this._sonosAudio(body);
     this._sonosTick();
+  }
+  _audioLabel(fn) {
+    const f = (fn || "").toLowerCase();
+    const map = [["basses", "Basses"], ["aigu", "Aigus"], ["gain", "Gain caisson"], ["caisson", "Caisson de basses"],
+      ["loudness", "Loudness"], ["crossfade", "Crossfade"], ["nuit", "Mode nuit"], ["dialogue", "Dialogues"],
+      ["surround", "Surround"], ["balance", "Balance"]];
+    for (const [k, l] of map) if (f.includes(k)) return l;
+    return fn || "";
+  }
+  _fmtNum(v) { const n = parseFloat(v); return isNaN(n) ? v : (Math.round(n * 10) / 10).toString(); }
+  _sonosAudio(body) {
+    const master = this._sonosMaster(); if (!master) return;
+    const prefix = (master.split(".")[1] || "") + "_";
+    const KW = /(basses|aigu|caisson|gain|loudness|crossfade|nuit|dialogue|surround|balance)/i;
+    const st = this._hass.states, nums = [], sws = [];
+    Object.keys(st).forEach((id) => {
+      const oid = id.split(".")[1] || "";
+      if (!oid.startsWith(prefix) || !KW.test(oid)) return;
+      if (id.startsWith("number.")) nums.push(id);
+      else if (id.startsWith("switch.")) sws.push(id);
+    });
+    if (!nums.length && !sws.length) return;
+    const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.style.marginTop = "6px";
+    lbl.innerHTML = `<span>Réglages audio</span>`; body.appendChild(lbl);
+    this._sAudioNums = {};
+    nums.sort().forEach((id) => {
+      const s = st[id], a = s.attributes;
+      const min = a.min != null ? a.min : 0, max = a.max != null ? a.max : 100, step = a.step || 1;
+      const row = document.createElement("div"); row.className = "row";
+      const lr = document.createElement("div"); lr.className = "lbl";
+      const sp = document.createElement("span"); sp.textContent = this._audioLabel(a.friendly_name);
+      const bv = document.createElement("b"); bv.textContent = this._fmtNum(s.state);
+      lr.append(sp, bv);
+      const r = document.createElement("input"); r.type = "range"; r.min = min; r.max = max; r.step = step; r.value = s.state;
+      r.addEventListener("input", () => { bv.textContent = this._fmtNum(r.value); });
+      r.addEventListener("change", () => this._call("number", "set_value", { entity_id: id, value: parseFloat(r.value) }));
+      row.append(lr, r); body.appendChild(row);
+      this._sAudioNums[id] = { r, bv };
+    });
+    if (sws.length) {
+      const cr = document.createElement("div"); cr.className = "row chiprow"; this._sAudioSws = sws;
+      sws.sort().forEach((id) => {
+        const s = st[id], b = document.createElement("button"); b.className = "pchip"; b.dataset.sw = id;
+        b.textContent = this._audioLabel(s.attributes.friendly_name); b.classList.toggle("on", s.state === "on");
+        b.addEventListener("click", () => this._call("switch", "toggle", { entity_id: id }));
+        cr.appendChild(b);
+      });
+      body.appendChild(cr);
+    }
   }
   async _loadFavoritesPopup() {
     const ent = this._spkList().find((e) => this._hass.states[e]); if (!ent) return;
@@ -1717,6 +1769,14 @@ class JmaPopup extends HTMLElement {
       mute.classList.toggle("on", muted); mute.querySelector("ha-icon").setAttribute("icon", muted ? "mdi:volume-off" : "mdi:volume-high");
       const sl = this._sSliders[eid];
       if (sa.volume_level != null) { sl.hidden = false; sl.setValue(Math.round(sa.volume_level * 100)); } else sl.hidden = true;
+    });
+    if (this._sAudioNums) Object.keys(this._sAudioNums).forEach((id) => {
+      const s = this._hass.states[id]; if (!s) return; const { r, bv } = this._sAudioNums[id];
+      if (this.shadowRoot.activeElement !== r) { r.value = s.state; bv.textContent = this._fmtNum(s.state); }
+    });
+    if (this._sAudioSws) this._sAudioSws.forEach((id) => {
+      const s = this._hass.states[id], b = this.shadowRoot.querySelector(`.pchip[data-sw="${id}"]`);
+      if (b && s) b.classList.toggle("on", s.state === "on");
     });
   }
   _energyBody(body) {
@@ -1766,11 +1826,32 @@ class JmaPopup extends HTMLElement {
       host.appendChild(el); (this._graphs = this._graphs || []).push(el);
     } catch (e) {}
   }
-  _cameraBody(body) {
+  async _cameraBody(body) {
     const s = this._s;
-    const row = document.createElement("div"); row.className = "row";
-    row.innerHTML = `<img class="camimg" id="cam" src="${s.attributes.entity_picture || ""}">`;
+    const row = document.createElement("div"); row.className = "row camlive";
     body.appendChild(row);
+    // flux en direct (HLS/WebRTC géré par HA), repli sur snapshot rafraîchi
+    let live = false;
+    try {
+      if (window.loadCardHelpers) {
+        const h = await window.loadCardHelpers();
+        const el = h.createCardElement({ type: "picture-entity", entity: this._config.entity,
+          camera_image: this._config.entity, camera_view: "live", show_name: false, show_state: false });
+        el.hass = this._hass; el.classList.add("livecard");
+        row.appendChild(el); (this._graphs = this._graphs || []).push(el); live = true;
+      }
+    } catch (e) {}
+    if (!live) {
+      row.innerHTML = `<img class="camimg" id="cam" src="${s.attributes.entity_picture || ""}">`;
+      clearInterval(this._camTimer);
+      this._camTimer = setInterval(() => {
+        const img = this.shadowRoot.getElementById("cam"); const st = this._s;
+        if (img && st && st.attributes.entity_picture) {
+          const p = st.attributes.entity_picture;
+          img.src = p + (p.includes("?") ? "&" : "?") + "_=" + Date.now();
+        }
+      }, 2500);
+    }
     const cells = [];
     const pc = this._config.person_count_entity && this._hass.states[this._config.person_count_entity];
     if (pc) cells.push(["Personnes", pc.state]);
@@ -1781,14 +1862,6 @@ class JmaPopup extends HTMLElement {
       kv.innerHTML = cells.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
       body.appendChild(kv);
     }
-    clearInterval(this._camTimer);
-    this._camTimer = setInterval(() => {
-      const img = this.shadowRoot.getElementById("cam"); const st = this._s;
-      if (img && st && st.attributes.entity_picture) {
-        const p = st.attributes.entity_picture;
-        img.src = p + (p.includes("?") ? "&" : "?") + "_=" + Date.now();
-      }
-    }, 2500);
   }
   _mediaBody(body) {
     const s = this._s;
