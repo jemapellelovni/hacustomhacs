@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.55.0";
+const VERSION = "0.56.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1381,9 +1381,12 @@ class JmaPopup extends HTMLElement {
         .cbtns{display:flex;gap:6px;}
         .ccb{flex:1;height:34px;border-radius:10px;border:none;cursor:pointer;background:var(--p-track);color:var(--p-text);display:flex;align-items:center;justify-content:center;transition:transform .08s,background .15s;}
         .ccb:active{transform:scale(.9);}.ccb ha-icon{--mdc-icon-size:20px;}
+        .cpre{display:flex;gap:5px;}
+        .cpc{flex:1;height:27px;border-radius:8px;border:none;cursor:pointer;background:var(--p-surf2);color:var(--p-text);font-size:.7rem;font-weight:700;transition:transform .08s,background .15s;font-variant-numeric:tabular-nums;}
+        .cpc:active{transform:scale(.92);background:var(--jma-grad);color:var(--jma-dark);}
         .cslider .slider{height:30px;}
         /* sonos : barre transport persistante */
-        .stp{position:sticky;top:0;z-index:6;background:var(--p-bg);backdrop-filter:blur(28px) saturate(150%);-webkit-backdrop-filter:blur(28px) saturate(150%);padding:1px 0 10px;margin-bottom:2px;display:flex;flex-direction:column;gap:9px;border-bottom:1px solid var(--p-line);}
+        .stp{position:sticky;top:0;z-index:6;background:linear-gradient(var(--p-bg) 72%,transparent);padding:1px 0 14px;margin-bottom:-4px;display:flex;flex-direction:column;gap:9px;}
         .stpbtns{display:flex;align-items:center;justify-content:center;gap:16px;}
         .stpb{width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;background:var(--p-surf);color:var(--p-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
         .stpb:active{transform:scale(.86);}.stpb ha-icon{--mdc-icon-size:24px;}
@@ -1489,8 +1492,8 @@ class JmaPopup extends HTMLElement {
     this.shadowRoot.getElementById("x").addEventListener("click", (e) => { e.stopPropagation(); this._close(); });
     this._built = true;
     jmaApplyTheme(this, this._hass, this._config);
-    if (["covers", "sonos"].includes(this._kind())) this.shadowRoot.getElementById("wrap").classList.add("wide");
-    if (this._kind() === "climates") this.shadowRoot.getElementById("wrap").classList.add("xwide");
+    if (this._kind() === "sonos") this.shadowRoot.getElementById("wrap").classList.add("wide");
+    if (this._kind() === "climates" || this._kind() === "covers") this.shadowRoot.getElementById("wrap").classList.add("xwide");
     this._renderBody();
     this._refresh();
   }
@@ -2159,7 +2162,13 @@ class JmaPopup extends HTMLElement {
           `<button class="ccb" data-a="close_cover" aria-label="Fermer"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>`;
         tile.querySelectorAll(".ccb").forEach((b) => b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: eid })));
         let sl = null;
-        if (supportsPos) { sl = jmaSlider({ icon: "mdi:window-shutter", fmt: (v) => v + "%", label: nm, onCommit: (v) => this._call("cover", "set_cover_position", { entity_id: eid, position: v }) }); const sw = document.createElement("div"); sw.className = "cslider"; sw.appendChild(sl); tile.appendChild(sw); }
+        if (supportsPos) {
+          const pr = document.createElement("div"); pr.className = "cpre";
+          [10, 20, 50, 75].forEach((pct) => { const b = document.createElement("button"); b.className = "cpc"; b.textContent = pct + "%";
+            b.addEventListener("click", () => this._call("cover", "set_cover_position", { entity_id: eid, position: pct })); pr.appendChild(b); });
+          tile.appendChild(pr);
+          sl = jmaSlider({ icon: "mdi:window-shutter", fmt: (v) => v + "%", label: nm, onCommit: (v) => this._call("cover", "set_cover_position", { entity_id: eid, position: v }) }); const sw = document.createElement("div"); sw.className = "cslider"; sw.appendChild(sl); tile.appendChild(sw);
+        }
         rwrap.appendChild(tile);
         this._covRows[eid] = { row: tile, sl };
       });
