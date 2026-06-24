@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.10.0";
+const VERSION = "0.10.1";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -923,15 +923,18 @@ class JmaPopup extends HTMLElement {
         .back{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);
           backdrop-filter:blur(6px);opacity:0;transition:opacity .26s ease;display:flex;align-items:flex-end;justify-content:center;}
         .back.show{opacity:1;}
-        .sheet{width:100%;max-width:460px;margin:0 12px 12px;box-sizing:border-box;
+        .sheet{width:100%;max-width:460px;margin:0 12px 12px;box-sizing:border-box;max-height:88vh;
+          display:flex;flex-direction:column;overflow:hidden;
           background:rgba(20,20,22,.86);backdrop-filter:blur(28px) saturate(160%);
           -webkit-backdrop-filter:blur(28px) saturate(160%);border:1px solid rgba(255,255,255,.08);
-          border-radius:28px;color:#fff;padding:18px 18px 22px;transform:translateY(40px);opacity:0;
+          border-radius:28px;color:#fff;padding:18px 18px 20px;transform:translateY(40px);opacity:0;
           transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .3s ease;}
-        @media(min-width:768px){.back{align-items:center;} .sheet{margin:0;}}
+        @media(min-width:768px){.back{align-items:center;} .sheet{margin:0;max-height:90vh;}}
         .back.show .sheet{transform:translateY(0);opacity:1;}
-        .grab{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.25);margin:0 auto 14px;}
-        .head{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+        .grab{width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.25);margin:0 auto 14px;flex:none;}
+        .head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex:none;}
+        #body{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;flex:1 1 auto;min-height:0;
+          margin:0 -4px;padding:0 4px;}
         .hicon{width:48px;height:48px;border-radius:50%;background:rgba(248,165,194,.18);display:flex;align-items:center;justify-content:center;}
         .hicon ha-icon{--mdc-icon-size:26px;color:var(--jma-rose);}
         .htxt{flex:1;min-width:0;}
@@ -1639,22 +1642,23 @@ customElements.define("jma-presence-card", JmaPresenceCard);
 // =============================================================================
 class JmaAgendaCard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._loading = false; }
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, days: 7, title: "Agenda", ...c }; this._cals = c.entities || (c.entity ? [c.entity] : []); }
-  getCardSize() { return 3; }
-  static getStubConfig() { return { title: "Agenda", days: 7, entities: ["calendar.example"] }; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, days: 7, max: 6, title: "Agenda", ...c }; this._cals = c.entities || (c.entity ? [c.entity] : []); }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { title: "Agenda", days: 7, max: 6, entities: ["calendar.example"] }; }
   set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } if (first || this._stale()) this._fetch(); }
   _stale() { return !this._last || Date.now() - this._last > 180000; }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        #list{display:flex;flex-direction:column;gap:4px;}
-        .day{font-weight:800;font-size:.72rem;opacity:.55;margin-top:8px;text-transform:capitalize;}
-        .ev{display:flex;gap:9px;align-items:center;background:rgba(255,255,255,.06);border-radius:11px;padding:7px 10px;}
-        .seg{width:3px;align-self:stretch;border-radius:3px;background:var(--jma-rose);}
-        .t{font-size:.7rem;opacity:.7;min-width:40px;font-weight:700;}
-        .ti{font-size:.79rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .empty{font-size:.76rem;opacity:.55;padding:6px 2px;}
+        .content{gap:6px;}
+        #list{display:flex;flex-direction:column;gap:0;}
+        .day{font-weight:800;font-size:.64rem;opacity:.5;margin-top:7px;margin-bottom:1px;text-transform:uppercase;letter-spacing:.4px;}
+        .ev{display:flex;gap:8px;align-items:center;padding:3px 2px;}
+        .dot{width:6px;height:6px;border-radius:50%;background:var(--jma-rose);flex:none;}
+        .t{font-size:.69rem;opacity:.65;min-width:36px;font-weight:700;font-variant-numeric:tabular-nums;}
+        .ti{font-size:.77rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+        .more,.empty{font-size:.7rem;opacity:.5;padding:3px 2px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
         <div class="top"><div class="badge"><ha-icon icon="mdi:calendar-month"></ha-icon></div>
@@ -1684,15 +1688,18 @@ class JmaAgendaCard extends HTMLElement {
     sub.textContent = `${this._config.days} j • ${evs.length} évén.`;
     if (!evs.length) { const x = document.createElement("div"); x.className = "empty"; x.textContent = "Rien de prévu 🎉"; list.appendChild(x); return; }
     const dn = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+    const max = this._config.max || 6;
+    const shown = evs.slice(0, max);
     let last = "";
-    evs.forEach(({ d, allday, e }) => {
+    shown.forEach(({ d, allday, e }) => {
       const dk = d.toDateString();
       if (dk !== last) { last = dk; const h = document.createElement("div"); h.className = "day"; h.textContent = dn[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth() + 1); list.appendChild(h); }
       const row = document.createElement("div"); row.className = "ev";
-      const tt = allday ? "journée" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
-      row.innerHTML = `<div class="seg"></div><div class="t">${tt}</div><div class="ti">${e.summary || e.message || "(sans titre)"}</div>`;
+      const tt = allday ? "jour" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
+      row.innerHTML = `<span class="dot"></span><span class="t">${tt}</span><span class="ti">${e.summary || e.message || "(sans titre)"}</span>`;
       list.appendChild(row);
     });
+    if (evs.length > max) { const m = document.createElement("div"); m.className = "more"; m.textContent = "+ " + (evs.length - max) + " autres…"; list.appendChild(m); }
   }
 }
 customElements.define("jma-agenda-card", JmaAgendaCard);
