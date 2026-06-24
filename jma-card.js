@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.45.0";
+const VERSION = "0.46.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1271,6 +1271,7 @@ class JmaPopup extends HTMLElement {
           box-shadow:0 12px 40px rgba(0,0,0,.18);
           transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .3s ease;}
         @media(min-width:768px){.back{align-items:center;} .sheet{margin:0;max-height:90vh;}}
+        .back.wide .sheet{max-width:640px;}
         .back.show .sheet{transform:translateY(0);opacity:1;}
         .grab{width:38px;height:4px;border-radius:999px;background:var(--p-grab);margin:0 auto 14px;flex:none;}
         .head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex:none;}
@@ -1421,6 +1422,7 @@ class JmaPopup extends HTMLElement {
     this.shadowRoot.getElementById("x").addEventListener("click", (e) => { e.stopPropagation(); this._close(); });
     this._built = true;
     jmaApplyTheme(this, this._hass, this._config);
+    if (["covers", "climates", "sonos"].includes(this._kind())) this.shadowRoot.getElementById("wrap").classList.add("wide");
     this._renderBody();
     this._refresh();
   }
@@ -2047,9 +2049,9 @@ class JmaPopup extends HTMLElement {
   _coversBody(body) {
     const list = this._config.entities || [];
     const m = document.createElement("div"); m.className = "row btns";
-    m.innerHTML = `<button class="btn" id="cvo"><ha-icon icon="mdi:arrow-up" style="--mdc-icon-size:18px;vertical-align:-4px"></ha-icon> Tout ouvrir</button>` +
+    m.innerHTML = `<button class="btn" id="cvo"><ha-icon icon="mdi:chevron-up" style="--mdc-icon-size:20px;vertical-align:-5px"></ha-icon> Tout ouvrir</button>` +
       `<button class="btn" id="cvs">Stop</button>` +
-      `<button class="btn" id="cvc"><ha-icon icon="mdi:arrow-down" style="--mdc-icon-size:18px;vertical-align:-4px"></ha-icon> Tout fermer</button>`;
+      `<button class="btn" id="cvc"><ha-icon icon="mdi:chevron-down" style="--mdc-icon-size:20px;vertical-align:-5px"></ha-icon> Tout fermer</button>`;
     m.querySelector("#cvo").addEventListener("click", () => this._call("cover", "open_cover", { entity_id: list }));
     m.querySelector("#cvs").addEventListener("click", () => this._call("cover", "stop_cover", { entity_id: list }));
     m.querySelector("#cvc").addEventListener("click", () => this._call("cover", "close_cover", { entity_id: list }));
@@ -2061,9 +2063,9 @@ class JmaPopup extends HTMLElement {
       const row = document.createElement("div"); row.className = "grow cover";
       row.innerHTML = `<div class="gicon"><ha-icon class="gi" icon="mdi:window-shutter"></ha-icon></div>` +
         `<div class="gmeta"><div class="gn">${nm}</div><div class="gs cvp"></div></div>` +
-        `<div class="gbtns"><button class="cbtn covb" data-a="open_cover"><ha-icon icon="mdi:arrow-up"></ha-icon></button>` +
+        `<div class="gbtns"><button class="cbtn covb" data-a="open_cover"><ha-icon icon="mdi:chevron-up"></ha-icon></button>` +
         `<button class="cbtn covb" data-a="stop_cover"><ha-icon icon="mdi:stop"></ha-icon></button>` +
-        `<button class="cbtn covb" data-a="close_cover"><ha-icon icon="mdi:arrow-down"></ha-icon></button></div>`;
+        `<button class="cbtn covb" data-a="close_cover"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>`;
       row.querySelectorAll(".cbtn").forEach((b) => b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: eid })));
       let sl = null;
       if (supportsPos) { sl = jmaSlider({ icon: "mdi:window-shutter", fmt: (v) => v + "%", label: nm, onCommit: (v) => this._call("cover", "set_cover_position", { entity_id: eid, position: v }) }); const sw = document.createElement("div"); sw.className = "gslider"; sw.appendChild(sl); row.appendChild(sw); }
@@ -2085,30 +2087,44 @@ class JmaPopup extends HTMLElement {
   _climatesBody(body) {
     const list = this._config.entities || [];
     this._climRows = {};
+    const MODE_ICON = { off: "mdi:power", heat: "mdi:fire", cool: "mdi:snowflake", auto: "mdi:autorenew", heat_cool: "mdi:autorenew", dry: "mdi:water-percent", fan_only: "mdi:fan" };
     list.forEach((eid) => {
-      const s = this._hass.states[eid]; const nm = (this._config.names && this._config.names[eid]) || ((s && s.attributes.friendly_name) || eid);
+      const s = this._hass.states[eid]; if (!s) return; const a0 = s.attributes;
+      const nm = (this._config.names && this._config.names[eid]) || (a0.friendly_name || eid);
       const row = document.createElement("div"); row.className = "grow climate";
       row.innerHTML = `<div class="gicon"><ha-icon class="gi" icon="mdi:thermostat"></ha-icon></div>` +
         `<div class="gmeta"><div class="gn">${nm}</div><div class="gs clst"></div></div>` +
-        `<div class="gctl"><button class="gstep" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="gset clset">—</div><button class="gstep" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>`;
+        `<div class="gctl"><button class="gstep" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="gset clset">—</div><button class="gstep" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>` +
+        `<div class="gmodes chiprow" style="flex-basis:100%;margin-top:2px;"></div>`;
       row.querySelectorAll(".gstep").forEach((b) => b.addEventListener("click", () => {
         const st = this._hass.states[eid]; if (!st) return; const a = st.attributes; const step = a.target_temp_step || 0.5;
         const min = a.min_temp ?? 7, max = a.max_temp ?? 35; let t = (a.temperature ?? min) + Number(b.dataset.d) * step;
         t = Math.max(min, Math.min(max, Math.round(t / step) * step));
         this._call("climate", "set_temperature", { entity_id: eid, temperature: Math.round(t * 10) / 10 });
       }));
+      // chips de mode (off/chauffe/refroidir/auto…)
+      const modes = a0.hvac_modes || [];
+      const mc = row.querySelector(".gmodes");
+      modes.forEach((m) => {
+        const b = document.createElement("button"); b.className = "pchip"; b.dataset.m = m;
+        b.innerHTML = `<ha-icon icon="${MODE_ICON[m] || "mdi:thermostat"}" style="--mdc-icon-size:15px;vertical-align:-3px;margin-right:3px"></ha-icon>${HVAC_FR[m] || m}`;
+        b.addEventListener("click", () => this._call("climate", "set_hvac_mode", { entity_id: eid, hvac_mode: m }));
+        mc.appendChild(b);
+      });
       body.appendChild(row); this._climRows[eid] = row;
     });
     this._climatesTick = () => {
       list.forEach((eid) => {
         const s = this._hass.states[eid], row = this._climRows[eid]; if (!s || !row) return; const a = s.attributes;
         row.querySelector(".clset").textContent = a.temperature != null ? a.temperature + "°" : "—";
-        const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "° · " : "";
-        row.querySelector(".clst").textContent = cur + (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
+        const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "° " : "";
+        const hum = a.current_humidity != null ? " · 💧" + a.current_humidity + "%" : "";
+        row.querySelector(".clst").textContent = cur + "· " + (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state) + hum;
         row.classList.toggle("on", s.state !== "off" && s.state !== "unavailable" && !["heating", "cooling", "preheating"].includes(a.hvac_action));
         row.classList.toggle("warn", ["heating", "preheating"].includes(a.hvac_action));
         row.classList.toggle("cool", a.hvac_action === "cooling");
         row.querySelector(".gi").setAttribute("icon", a.hvac_action === "cooling" ? "mdi:snowflake" : ["heating", "preheating"].includes(a.hvac_action) ? "mdi:fire" : "mdi:thermostat");
+        row.querySelectorAll(".gmodes .pchip").forEach((b) => b.classList.toggle("on", b.dataset.m === s.state));
       });
     };
     this._climatesTick();
@@ -4048,8 +4064,13 @@ class JmaGroupCard extends HTMLElement {
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   _list() {
     if (this._config.entities && this._config.entities.length) return this._config.entities;
-    const dom = this._DOMAIN;
-    return Object.keys(this._hass.states).filter((e) => e.startsWith(dom + ".") && !["unavailable", "unknown"].includes(this._hass.states[e].state)).sort();
+    const dom = this._DOMAIN, ex = this._EXCLUDE;
+    return Object.keys(this._hass.states).filter((e) => {
+      if (!e.startsWith(dom + ".")) return false;
+      const s = this._hass.states[e]; if (["unavailable", "unknown"].includes(s.state)) return false;
+      if (ex && (ex.test(e) || ex.test(s.attributes.friendly_name || ""))) return false;
+      return true;
+    }).sort();
   }
   _build() {
     const c = this._config;
@@ -4073,7 +4094,7 @@ class JmaGroupCard extends HTMLElement {
   }
 }
 class JmaCoversCard extends JmaGroupCard {
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Volets", icon: "mdi:window-shutter", ...c }; this._DOMAIN = "cover"; this._KIND = "covers"; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Volets", icon: "mdi:window-shutter", ...c }; this._DOMAIN = "cover"; this._KIND = "covers"; this._EXCLUDE = /(low[ _]?speed|vitesse[ _]?lente|basse[ _]?vitesse|tous[ _]?les[ _]?volets|_group\b)/i; }
   static getStubConfig() { return { name: "Volets" }; }
   _update() {
     const list = this._list(); let open = 0;
