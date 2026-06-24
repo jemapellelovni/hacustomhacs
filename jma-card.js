@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.14.0";
+const VERSION = "0.15.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -54,10 +54,15 @@ function jmaBatIcon(p, charging) {
 //  STYLE & HELPERS PARTAGÉS
 // =============================================================================
 const BASE_CSS = `
+  :host{--jma-text:#fff;--jma-icon:rgba(255,255,255,.8);--jma-surf:rgba(255,255,255,.06);
+    --jma-surf2:rgba(255,255,255,.12);--jma-surf3:rgba(255,255,255,.1);--jma-track:rgba(255,255,255,.16);
+    --jma-ripple:rgba(255,255,255,.35);}
+  :host(.light){--jma-text:#15161a;--jma-icon:rgba(20,22,26,.7);--jma-surf:rgba(0,0,0,.045);
+    --jma-surf2:rgba(0,0,0,.07);--jma-surf3:rgba(0,0,0,.06);--jma-track:rgba(0,0,0,.12);--jma-ripple:rgba(0,0,0,.14);}
   .tile{position:relative;overflow:hidden;border-radius:18px;min-height:60px;height:100%;
-    padding:11px;box-sizing:border-box;background:rgba(255,255,255,.06);
+    padding:11px;box-sizing:border-box;background:var(--jma-surf);
     backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
-    color:#fff;user-select:none;display:flex;touch-action:pan-y;
+    color:var(--jma-text);user-select:none;display:flex;touch-action:pan-y;
     transition:transform .22s cubic-bezier(.2,.7,.3,1),background .3s ease;}
   .tile:not(.flat){cursor:pointer;}
   .tile:not(.flat):hover{transform:scale(1.02);}
@@ -65,32 +70,32 @@ const BASE_CSS = `
   .content{position:relative;z-index:1;display:flex;flex-direction:column;
     justify-content:space-between;gap:9px;width:100%;}
   .top{display:flex;align-items:center;gap:9px;}
-  .badge{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.12);flex:none;
+  .badge{width:34px;height:34px;border-radius:50%;background:var(--jma-surf2);flex:none;
     display:flex;align-items:center;justify-content:center;transition:background .3s ease;}
-  .badge ha-icon{--mdc-icon-size:20px;color:rgba(255,255,255,.78);transition:color .3s;}
+  .badge ha-icon{--mdc-icon-size:20px;color:var(--jma-icon);transition:color .3s;}
   .meta{min-width:0;flex:1;}
   .name{font-weight:600;font-size:clamp(.8rem,2.2vw,.94rem);letter-spacing:-.2px;line-height:1.12;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sub{font-size:clamp(.66rem,1.7vw,.76rem);opacity:.62;margin-top:1px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tile.on .badge{background:rgba(10,10,11,.16);}
+  .tile.on .badge{background:var(--jma-rose);}
   .tile.on .badge ha-icon{color:var(--jma-dark);}
 
   /* slider horizontal */
   .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:none;
-    background:rgba(255,255,255,.14);touch-action:none;cursor:pointer;}
+    background:var(--jma-track);touch-action:none;cursor:pointer;}
   .slider[hidden]{display:none;}
   .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;
     background:linear-gradient(90deg,var(--jma-beige) 0%,var(--jma-rose) 100%);
     transition:width .28s cubic-bezier(.2,.7,.3,1);}
   .slider.dragging .sfill{transition:none;}
   .sval{position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
-    font-weight:700;font-size:.78rem;text-shadow:0 1px 2px rgba(0,0,0,.28);}
+    font-weight:700;font-size:.78rem;color:var(--jma-text);text-shadow:0 1px 2px rgba(0,0,0,.18);}
   .sicon{position:absolute;right:9px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
-    --mdc-icon-size:16px;color:rgba(255,255,255,.85);}
+    --mdc-icon-size:16px;color:var(--jma-icon);}
 
   /* pastille on/off (switch) */
-  .pill{width:50px;height:30px;border-radius:999px;background:rgba(255,255,255,.2);flex:none;
+  .pill{width:50px;height:30px;border-radius:999px;background:var(--jma-track);flex:none;
     position:relative;transition:background .3s ease;cursor:pointer;}
   .pill .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;
     box-shadow:0 2px 6px rgba(0,0,0,.35);transition:left .26s cubic-bezier(.2,.8,.2,1);}
@@ -100,9 +105,9 @@ const BASE_CSS = `
   /* boutons de contrôle */
   .btnrow{display:flex;gap:6px;flex-wrap:wrap;}
   .cbtn{flex:1 1 auto;min-width:46px;height:34px;border:none;border-radius:11px;cursor:pointer;
-    background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;gap:5px;
+    background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;gap:5px;
     font-weight:600;font-size:.76rem;transition:background .2s,transform .08s;}
-  .cbtn:hover{background:rgba(248,165,194,.2);}
+  .cbtn:hover{background:rgba(248,165,194,.25);}
   .cbtn:active{transform:scale(.93);}
   .cbtn ha-icon{--mdc-icon-size:18px;}
   .cbtn.accent{background:var(--jma-rose);color:var(--jma-dark);}
@@ -110,20 +115,20 @@ const BASE_CSS = `
   /* stepper thermostat */
   .therm{display:flex;align-items:center;justify-content:space-between;gap:8px;}
   .set{font-weight:800;font-size:1.35rem;letter-spacing:-1px;text-align:center;flex:1;}
-  .step{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;background:rgba(255,255,255,.12);
-    color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+  .step{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf2);
+    color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
   .step ha-icon{--mdc-icon-size:20px;}
   .step:active{transform:scale(.9);}
 
   /* chips (modes) */
   .chips{display:flex;gap:5px;flex-wrap:wrap;}
-  .chip{padding:4px 8px;border-radius:9px;background:rgba(255,255,255,.1);font-size:.68rem;cursor:pointer;
-    border:none;color:#fff;text-transform:capitalize;transition:background .2s;}
+  .chip{padding:4px 8px;border-radius:9px;background:var(--jma-surf3);font-size:.68rem;cursor:pointer;
+    border:none;color:var(--jma-text);text-transform:capitalize;transition:background .2s;}
   .chip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
 
   /* ripple */
   .tile::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
-    background:radial-gradient(circle at var(--rx,50%) var(--ry,50%),rgba(255,255,255,.35) 0%,transparent 55%);
+    background:radial-gradient(circle at var(--rx,50%) var(--ry,50%),var(--jma-ripple) 0%,transparent 55%);
     opacity:0;transform:scale(.3);}
   .tile.ripple::after{animation:jma-ripple .55s ease-out;}
   @keyframes jma-ripple{0%{opacity:.6;transform:scale(.3);}100%{opacity:0;transform:scale(1.6);}}
@@ -134,7 +139,40 @@ const BASE_CSS = `
     opacity:.22;filter:blur(8px) saturate(1.25);transition:opacity .4s,background-image .4s;}
   .bigbat{display:flex;align-items:center;gap:2px;font-size:.8rem;font-weight:700;opacity:.85;flex:none;}
   .bigbat ha-icon{--mdc-icon-size:18px;}
+  /* sparkline sur tuile */
+  .spark{position:relative;height:34px;width:100%;}
+  .spark svg{width:100%;height:100%;display:block;}
 `;
+
+// thème : applique la classe .light sur l'hôte selon la config et le thème HA
+function jmaApplyTheme(host, hass, config) {
+  const mode = (config && config.theme) || "auto";
+  let light = mode === "light";
+  if (mode === "auto") light = !!(hass && hass.themes && hass.themes.darkMode === false);
+  host.classList.toggle("light", light);
+}
+
+// mini sparkline NON interactive pour les tuiles -> remplit host avec un SVG
+async function jmaSparkline(host, hass, entity, hours, color) {
+  if (!host || !hass || !entity) return;
+  try {
+    const end = new Date(), start = new Date(Date.now() - (hours || 24) * 3600000);
+    const path = `history/period/${start.toISOString()}?end_time=${encodeURIComponent(end.toISOString())}` +
+      `&filter_entity_id=${entity}&minimal_response&significant_changes_only`;
+    const res = await hass.callApi("GET", path);
+    const arr = (res && res[0]) || [];
+    const pts = arr.map((p) => parseFloat(p.state)).filter((v) => !isNaN(v));
+    if (pts.length < 2) { host.innerHTML = ""; return; }
+    let mn = Math.min(...pts), mx = Math.max(...pts); if (mn === mx) { mn -= 1; mx += 1; }
+    const W = 200, H = 34, pad = 3;
+    const sx = (i) => pad + (i / (pts.length - 1)) * (W - 2 * pad);
+    const sy = (v) => H - pad - ((v - mn) / (mx - mn)) * (H - 2 * pad);
+    const d = pts.map((v, i) => (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(v).toFixed(1)).join(" ");
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
+      `<path d="${d} L ${sx(pts.length - 1).toFixed(1)} ${H - pad} L ${sx(0).toFixed(1)} ${H - pad} Z" fill="${color || ROSE}" opacity=".14"/>` +
+      `<path d="${d}" fill="none" stroke="${color || ROSE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  } catch (e) { host.innerHTML = ""; }
+}
 
 const CARD_WRAP_OPEN = '<ha-card style="background:none;border:none;box-shadow:none;">';
 
@@ -204,6 +242,7 @@ class JmaBase extends HTMLElement {
   set hass(h) {
     this._hass = h;
     if (!this._built) { this._build(); this._built = true; }
+    jmaApplyTheme(this, h, this._config);
     this._update();
     if (this._popup) this._popup.hass = h;
   }
@@ -730,6 +769,7 @@ class JmaCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._built) this._build();
+    jmaApplyTheme(this, hass, this._config);
     this._update();
     if (this._popup) this._popup.hass = hass;
   }
@@ -1555,7 +1595,7 @@ class JmaEvCard extends HTMLElement {
       plug_entity: "binary_sensor.zoe_prise", charging_entity: "binary_sensor.zoe_en_charge" };
   }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   _g(key) { const e = this._config[key]; return e && this._hass.states[e]; }
   _num(key) { const s = this._g(key); if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
   _openPopup() {
@@ -1644,7 +1684,7 @@ class JmaBinCard extends HTMLElement {
   getCardSize() { return 1; }
   static getStubConfig() { return { name: "Poubelle", days: [3] }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
@@ -1716,7 +1756,7 @@ class JmaCameraCard extends HTMLElement {
   getCardSize() { return 2; }
   static getStubConfig() { return { entity: "camera.example" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   get _s() { return this._hass.states[this._config.entity]; }
   _build() {
     const c = this._config;
@@ -1772,7 +1812,7 @@ class JmaPresenceCard extends HTMLElement {
   getCardSize() { return 1; }
   static getStubConfig() { return { persons: ["person.example"] }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
@@ -1856,7 +1896,7 @@ class JmaAgendaCard extends HTMLElement {
   getCardSize() { return 2; }
   static getStubConfig() { return { title: "Agenda", days: 7, max: 6, entities: ["calendar.example"] }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } if (first || this._stale()) this._fetch(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); if (first || this._stale()) this._fetch(); if (this._popup) this._popup.hass = h; }
   _stale() { return !this._last || Date.now() - this._last > 180000; }
   _openPopup() {
     if (this._popup) return;
@@ -1937,7 +1977,7 @@ class JmaEnergyCard extends HTMLElement {
   getCardSize() { return 2; }
   static getStubConfig() { return { title: "Énergie", production_entity: "sensor.solar_power", grid_entity: "sensor.grid_power" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   _num(key) { const e = this._config[key]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
   _build() {
     const c = this._config;
@@ -1959,6 +1999,7 @@ class JmaEnergyCard extends HTMLElement {
           <span><span class="dot" style="background:var(--jma-rose)"></span>Solaire <b id="sol">—</b></span>
           <span><span class="dot" style="background:var(--edf)"></span>EDF <b id="grd">—</b></span>
         </div>
+        <div class="spark" id="espk" style="height:30px;"></div>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
   }
@@ -1988,6 +2029,10 @@ class JmaEnergyCard extends HTMLElement {
     ic.setAttribute("icon", solarDom ? "mdi:solar-power" : "mdi:transmission-tower");
     ic.style.color = accent;
     this.shadowRoot.querySelector(".badge").style.background = accent + "33";
+    if (this._config.production_entity && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
+      this._sparkAt = Date.now();
+      jmaSparkline(this.shadowRoot.getElementById("espk"), this._hass, this._config.production_entity, 24, this._config.color);
+    }
   }
 }
 customElements.define("jma-energy-card", JmaEnergyCard);
@@ -2015,7 +2060,7 @@ class JmaWeatherCard extends HTMLElement {
   static getStubConfig() { return { entity: "weather.home" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
   get _s() { return this._hass.states[this._config.entity]; }
-  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._config.show_forecast && (first || this._fcStale())) this._loadForecast(); }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._config.show_forecast && (first || this._fcStale())) this._loadForecast(); }
   _fcStale() { return !this._fcAt || Date.now() - this._fcAt > 1800000; }
   _build() {
     const c = this._config;
@@ -2079,6 +2124,122 @@ class JmaWeatherCard extends HTMLElement {
 customElements.define("jma-weather-card", JmaWeatherCard);
 
 // =============================================================================
+//  🔢 CAPTEUR — valeur + mini-graphe sur la tuile
+// =============================================================================
+const DC_ICON = {
+  temperature: "mdi:thermometer", humidity: "mdi:water-percent", power: "mdi:flash", energy: "mdi:lightning-bolt",
+  battery: "mdi:battery", pressure: "mdi:gauge", illuminance: "mdi:brightness-5", voltage: "mdi:sine-wave",
+  current: "mdi:current-ac", co2: "mdi:molecule-co2", pm25: "mdi:air-filter", carbon_dioxide: "mdi:molecule-co2",
+  signal_strength: "mdi:wifi", distance: "mdi:map-marker-distance", speed: "mdi:speedometer", gas: "mdi:meter-gas",
+};
+class JmaSensorCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { if (!c.entity) throw new Error("capteur : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, hours: 24, graph: true, ...c }; }
+  getCardSize() { return 1; }
+  static getStubConfig() { return { entity: "sensor.example" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  get _s() { return this._hass.states[this._config.entity]; }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._config.graph && (first || this._gStale())) this._spark(); }
+  _gStale() { return !this._gAt || Date.now() - this._gAt > 300000; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .val{font-weight:800;font-size:1.35rem;letter-spacing:-1px;flex:none;}
+        .val small{font-size:.7rem;font-weight:600;opacity:.6;margin-left:1px;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
+        <div class="top"><div class="badge"><ha-icon id="ic"></ha-icon></div>
+          <div class="meta"><div class="name" id="nm"></div><div class="sub" id="sub"></div></div>
+          <div class="val" id="val">—</div></div>
+        <div class="spark" id="spk"></div>
+      </div></div></ha-card>`;
+    this.shadowRoot.getElementById("tile").addEventListener("click", () =>
+      this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._config.entity } })));
+  }
+  _update() {
+    const s = this._s; if (!s) { this.shadowRoot.getElementById("nm").textContent = this._config.entity + " (indispo)"; return; }
+    const a = s.attributes;
+    const v = parseFloat(s.state);
+    const num = !isNaN(v);
+    this.shadowRoot.getElementById("ic").setAttribute("icon", this._config.icon || a.icon || DC_ICON[a.device_class] || "mdi:gauge");
+    this.shadowRoot.getElementById("nm").textContent = this._config.name || a.friendly_name || this._config.entity;
+    this.shadowRoot.getElementById("val").innerHTML = (num ? Math.round(v * 10) / 10 : s.state) + (a.unit_of_measurement ? `<small>${a.unit_of_measurement}</small>` : "");
+    this.shadowRoot.getElementById("sub").textContent = a.device_class ? a.device_class : (this._config.graph && num ? this._config.hours + " h" : "");
+    const spk = this.shadowRoot.getElementById("spk");
+    spk.style.display = (this._config.graph && num) ? "" : "none";
+  }
+  _spark() { this._gAt = Date.now(); jmaSparkline(this.shadowRoot.getElementById("spk"), this._hass, this._config.entity, this._config.hours, this._config.color); }
+}
+customElements.define("jma-sensor-card", JmaSensorCard);
+
+// =============================================================================
+//  🏠 PIÈCE — regroupe plusieurs entités, chacune ouvre son pop-up
+// =============================================================================
+class JmaRoomCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Pièce", icon: "mdi:sofa", ...c }; this._ents = c.entities || []; }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { name: "Salon", icon: "mdi:sofa", entities: ["light.salon"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;}
+        .e{background:var(--jma-surf3);border:none;border-radius:12px;padding:8px 4px;cursor:pointer;display:flex;
+          flex-direction:column;align-items:center;gap:3px;color:var(--jma-text);transition:background .2s,transform .08s;}
+        .e:active{transform:scale(.92);}
+        .e.on{background:var(--jma-rose);color:var(--jma-dark);}
+        .e ha-icon{--mdc-icon-size:21px;}
+        .e span{font-size:.6rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="top"><div class="badge"><ha-icon icon="${c.icon}"></ha-icon></div>
+          <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sum"></div></div></div>
+        <div class="grid" id="grid"></div>
+      </div></div></ha-card>`;
+  }
+  _isOn(s) {
+    const d = s.entity_id.split(".")[0];
+    if (d === "climate") return s.state !== "off" && s.state !== "unavailable";
+    if (d === "media_player") return ["playing", "paused", "on"].includes(s.state);
+    if (d === "cover") return s.state === "open";
+    return s.state === "on";
+  }
+  _openPopup(entity) {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { entity, color: this._config.color, accent: this._config.accent, dark: this._config.dark };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
+  _update() {
+    const grid = this.shadowRoot.getElementById("grid"); grid.innerHTML = "";
+    let onCount = 0, temp = null;
+    this._ents.forEach((eid) => {
+      const s = this._hass.states[eid]; if (!s) return;
+      const a = s.attributes, d = eid.split(".")[0];
+      const on = this._isOn(s);
+      if (on && ["light", "switch", "fan", "input_boolean"].includes(d)) onCount++;
+      if (d === "climate" && a.current_temperature != null && temp == null) temp = a.current_temperature;
+      const b = document.createElement("button"); b.className = "e" + (on ? " on" : "");
+      const icon = a.icon || DC_ICON[a.device_class] || { light: "mdi:lightbulb", switch: "mdi:power-socket-eu", cover: "mdi:window-shutter", climate: "mdi:thermostat", media_player: "mdi:speaker", fan: "mdi:fan", scene: "mdi:palette", lock: "mdi:lock" }[d] || "mdi:circle";
+      b.innerHTML = `<ha-icon icon="${icon}"></ha-icon><span>${(this._config.names && this._config.names[eid]) || (a.friendly_name || eid).split(" ").slice(-1)[0]}</span>`;
+      b.addEventListener("click", () => this._openPopup(eid));
+      grid.appendChild(b);
+    });
+    const parts = [];
+    if (temp != null) parts.push(temp + "°");
+    parts.push(onCount ? onCount + " allumé" + (onCount > 1 ? "s" : "") : "Tout éteint");
+    this.shadowRoot.getElementById("sum").textContent = parts.join(" · ");
+  }
+}
+customElements.define("jma-room-card", JmaRoomCard);
+
+// =============================================================================
 //  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
 // =============================================================================
 const ED_LABELS = {
@@ -2097,7 +2258,7 @@ const ED_LABELS = {
   persons: "Personnes", battery_entities: "Capteurs batterie (ordre des personnes)",
   geocode_entities: "Capteurs adresse (ordre des personnes)", distance_entities: "Capteurs distance (ordre des personnes)",
   entities: "Calendriers", days: "Jours", max: "Nb max d'événements", time: "Heure de sortie",
-  show_forecast: "Afficher les prévisions",
+  show_forecast: "Afficher les prévisions", theme: "Thème", graph: "Mini-graphe", hours: "Période (h)",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -2106,8 +2267,14 @@ function jmaEditorSchema(type) {
   const txt = (name) => ({ name, selector: { text: {} } });
   const num = (name, min, max) => ({ name, selector: { number: { mode: "box", min: min ?? 0, max: max ?? 99, step: 1 } } });
   const sel = (name, opts) => ({ name, selector: { select: { mode: "dropdown", options: opts.map((o) => typeof o === "string" ? { value: o, label: o } : o) } } });
+  const themeSel = sel("theme", [{ value: "auto", label: "Auto (thème HA)" }, { value: "dark", label: "Sombre" }, { value: "light", label: "Clair" }]);
   const tail = [txt("color"), txt("accent"), sel("tap_action", [
-    { value: "popup", label: "Pop-up JMA" }, { value: "more-info", label: "Fiche HA" }, { value: "none", label: "Aucun" }])];
+    { value: "popup", label: "Pop-up JMA" }, { value: "more-info", label: "Fiche HA" }, { value: "none", label: "Aucun" }]), themeSel];
+  if (t === "custom:jma-sensor-card") return [
+    ent("entity", "sensor", false, true), txt("name"), { name: "icon", selector: { icon: {} } },
+    { name: "graph", selector: { boolean: {} } }, num("hours", 1, 168), txt("color"), txt("accent"), themeSel];
+  if (t === "custom:jma-room-card") return [
+    txt("name"), { name: "icon", selector: { icon: {} } }, ent("entities", null, true, true), txt("color"), txt("accent"), themeSel];
 
   if (t === "custom:jma-ev-card") return [
     txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
@@ -2271,7 +2438,7 @@ class JmaNotifyCard extends HTMLElement {
   getCardSize() { return 1; }
   static getStubConfig() { return { title: "Notifications" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) this._build(); if (!this._subbed) this._subscribe(); }
+  set hass(h) { this._hass = h; if (!this._built) this._build(); jmaApplyTheme(this, h, this._config); if (!this._subbed) this._subscribe(); }
   _build() {
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${ROSE};--jma-beige:${BEIGE};--jma-dark:${DARK};}
@@ -2367,6 +2534,8 @@ REG("jma-presence-card", "JMA Présence", "Avatars présents/absents (personnes)
 REG("jma-agenda-card", "JMA Agenda", "Événements calendrier, nb de jours configurable.");
 REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solaire dominant.");
 REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jour.");
+REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
+REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
