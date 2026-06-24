@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.49.0";
+const VERSION = "0.50.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3861,6 +3861,8 @@ class JmaScreensaverCard extends HTMLElement {
   _disarm() { if (this._reset && window.removeEventListener) this._evs.forEach((ev) => window.removeEventListener(ev, this._reset)); this._reset = null; clearInterval(this._timer); }
   _show() {
     if (this._shown) return; this._shown = true;
+    // fermer tout pop-up JMA ouvert pour que la veille prenne le dessus proprement
+    try { document.querySelectorAll("jma-card-popup").forEach((p) => { if (p && typeof p._close === "function") p._close(); else if (p && p.remove) p.remove(); }); } catch (e) {}
     const o = document.createElement("div");
     o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:radial-gradient(125% 120% at 50% 12%,#141826 0%,#080a11 60%,#000 100%);color:#fff;opacity:0;transition:opacity .7s ease;";
     const st = document.createElement("style");
