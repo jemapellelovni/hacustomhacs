@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.48.0";
+const VERSION = "0.49.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1789,7 +1789,7 @@ class JmaPopup extends HTMLElement {
     head.innerHTML = cells.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
     body.appendChild(head);
     const fans = (a.fan_speed_list || []).filter((f) => f !== "off" && f !== "custom");
-    if (fans.length) {
+    if (this._config.show_fan !== false && fans.length) {
       const r = document.createElement("div"); r.className = "row";
       r.innerHTML = `<div class="lbl"><span>Aspiration</span></div><div class="chiprow"></div>`;
       const wrap = r.querySelector(".chiprow");
