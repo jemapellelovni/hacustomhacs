@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.39.0";
+const VERSION = "0.40.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3711,14 +3711,14 @@ class JmaScreensaverCard extends HTMLElement {
       .ss-clock{position:absolute;top:3.6vh;left:3.4vw;text-align:left;}
       .ss-time{font-weight:200;font-size:8vw;line-height:.92;letter-spacing:-.3vw;opacity:.88;}
       .ss-date{font-size:1.6vw;opacity:.32;text-transform:capitalize;letter-spacing:.14vw;margin-top:.4vh;}
-      .ss-center{position:absolute;top:47%;left:50%;transform:translate(-50%,-50%);width:66vw;display:flex;flex-direction:column;align-items:center;gap:1.4vh;}
-      .ss-glegend{display:flex;gap:3.4vw;font-size:2.4vw;font-weight:700;}
-      .ss-gi{display:inline-flex;align-items:center;gap:1vw;opacity:.5;transition:opacity .4s;}
+      .ss-center{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);width:46vw;display:flex;flex-direction:column;align-items:center;gap:1.8vh;}
+      .ss-glegend{display:flex;gap:3vw;font-size:2.4vw;font-weight:700;}
+      .ss-gi{display:inline-flex;align-items:center;gap:1vw;opacity:.45;transition:opacity .4s;}
       .ss-gi.dom{opacity:1;}
       .ss-gd{width:1.5vw;height:1.5vw;border-radius:50%;flex:none;}
-      .ss-graph{width:100%;height:27vh;position:relative;}
-      .ss-graph svg{width:100%;height:100%;display:block;overflow:visible;}
-      .ss-gmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.6vw;opacity:.4;}
+      .ss-ebar{width:100%;height:2.6vh;border-radius:99px;overflow:hidden;display:flex;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);}
+      .ss-es{background:linear-gradient(90deg,#f6c0d4,#f8a5c2);transition:width .6s ease;}
+      .ss-eg{background:linear-gradient(90deg,#8fb4ff,#5b9bff);transition:width .6s ease;}
       .ss-wx2{position:absolute;bottom:3vh;right:3vw;display:flex;align-items:center;gap:1.8vw;background:rgba(255,255,255,.05);
         border:1px solid rgba(255,255,255,.07);border-radius:2vw;padding:1.3vh 2vw;}
       .ss-wnow{display:flex;align-items:center;gap:1.3vw;}
@@ -3731,6 +3731,11 @@ class JmaScreensaverCard extends HTMLElement {
       .wfc .cell ha-icon{--mdc-icon-size:2.2vw;color:#cfe0ff;}
       .wfc .cell .cv{font-size:1.5vw;font-weight:800;}
       .wfc .cell .cl{font-size:1.02vw;opacity:.5;}
+      .wfc .cell.tomorrow{background:rgba(143,180,255,.13);border:1px solid rgba(143,180,255,.28);min-width:6.6vw;padding:.7vh 1.3vw;}
+      .wfc .cell.tomorrow ha-icon{--mdc-icon-size:3vw;}
+      .wfc .cell.tomorrow .cv{font-size:1.7vw;}
+      .wfc .cell.tomorrow .cv .lo{opacity:.45;margin-left:.4vw;font-size:1.15vw;font-weight:600;}
+      .wfc .cell.tomorrow .cl{font-size:1vw;max-width:8vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .ss-agenda{position:absolute;left:3vw;bottom:3vh;display:flex;flex-direction:column;gap:.6vh;width:27vw;max-width:36vw;}
       .ss-ev{display:flex;align-items:center;gap:1vw;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);border-radius:1vw;padding:.5vh 1vw;}
       .ss-ev .day{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:4.6vw;height:4.2vw;line-height:1;flex:none;
@@ -3751,7 +3756,7 @@ class JmaScreensaverCard extends HTMLElement {
     const wrap = document.createElement("div"); wrap.className = "ss-wrap";
     wrap.innerHTML =
       `<div class="ss-clock"><div class="ss-time" id="jct">--:--</div>${this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : ""}</div>` +
-      `<div class="ss-center"><div class="ss-glegend" id="jcgl"></div><div class="ss-graph" id="jcg"><div class="ss-gmsg">…</div></div></div>` +
+      `<div class="ss-center"><div class="ss-glegend" id="jcgl"></div><div class="ss-ebar"><div class="ss-es" id="jbs"></div><div class="ss-eg" id="jbg"></div></div></div>` +
       `<div class="ss-wx2" id="jcw" style="display:none"><div class="ss-wnow" id="jwnow"></div><div class="wfc" id="jwfc"></div></div>` +
       `<div class="ss-agenda" id="jca"></div>`;
     o.appendChild(st); o.appendChild(wrap);
@@ -3772,9 +3777,7 @@ class JmaScreensaverCard extends HTMLElement {
     document.body.appendChild(o); this._ovl = o; this._clkEl = wrap;
     if (window.requestAnimationFrame) requestAnimationFrame(() => { o.style.opacity = "1"; }); else o.style.opacity = "1";
     this._paint(); this._clk = setInterval(() => this._paint(), 1000);
-    this._shiftTimer = setInterval(() => this._shiftClock(), 60000);
     this._fetchAgenda(); this._agTimer = setInterval(() => this._fetchAgenda(), 300000);
-    this._paintGraph(); this._gTimer = setInterval(() => this._paintGraph(), 300000);
     this._fetchForecast(); this._fcTimer = setInterval(() => this._fetchForecast(), 1800000);
   }
   async _paintGraph() {
@@ -3824,8 +3827,8 @@ class JmaScreensaverCard extends HTMLElement {
     if (daily[0]) cells.push(`<div class="cell"><div class="ct">Auj.</div><div class="cv">${t(daily[0].temperature)}</div><div class="cl">${t(daily[0].templow)}</div></div>`);
     const now = Date.now();
     const fut = hourly.filter((h) => new Date(h.datetime).getTime() > now);
-    [1, 3, 5].forEach((i) => { const h = fut[i]; if (h) { const dt = new Date(h.datetime); cells.push(`<div class="cell"><div class="ct">${("0" + dt.getHours()).slice(-2)}h</div><ha-icon icon="${WEATHER_ICON[h.condition] || "mdi:weather-partly-cloudy"}"></ha-icon><div class="cv">${t(h.temperature)}</div></div>`); } });
-    if (daily[1]) cells.push(`<div class="cell"><div class="ct">Demain</div><ha-icon icon="${WEATHER_ICON[daily[1].condition] || "mdi:weather-partly-cloudy"}"></ha-icon><div class="cv">${t(daily[1].temperature)}</div><div class="cl">${t(daily[1].templow)}</div></div>`);
+    [1, 3].forEach((i) => { const h = fut[i]; if (h) { const dt = new Date(h.datetime); cells.push(`<div class="cell"><div class="ct">${("0" + dt.getHours()).slice(-2)}h</div><ha-icon icon="${WEATHER_ICON[h.condition] || "mdi:weather-partly-cloudy"}"></ha-icon><div class="cv">${t(h.temperature)}</div></div>`); } });
+    if (daily[1]) { const d1 = daily[1]; cells.push(`<div class="cell tomorrow"><div class="ct">Demain</div><ha-icon icon="${WEATHER_ICON[d1.condition] || "mdi:weather-partly-cloudy"}"></ha-icon><div class="cv">${t(d1.temperature)}<span class="lo">${t(d1.templow)}</span></div><div class="cl">${WEATHER_FR[d1.condition] || d1.condition || ""}</div></div>`); }
     host.innerHTML = cells.join("");
   }
   _runAction(a, b) {
@@ -3856,18 +3859,22 @@ class JmaScreensaverCard extends HTMLElement {
         cw.style.display = "flex";
       } else cw.style.display = "none";
     }
-    // légende live du graphe : solaire vs conso, plus grosse = dominante
-    const gl = this._ovl.querySelector("#jcgl");
+    // barre solaire (rose) vs réseau EDF (bleu) + couleur de l'heure selon la dominance
+    const gl = this._ovl.querySelector("#jcgl"), bs = this._ovl.querySelector("#jbs"), bg = this._ovl.querySelector("#jbg");
+    const f = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " kW" : Math.round(v) + " W";
+    const sol = this._wsv("production_entity"), grid = this._wsv("grid_entity");
+    const s = Math.max(0, sol || 0), g = Math.max(0, grid || 0), tot = Math.max(s + g, 1);
+    const solarDom = s >= g;
+    if (bs) bs.style.width = (s / tot * 100) + "%";
+    if (bg) bg.style.width = (g / tot * 100) + "%";
     if (gl) {
-      const f = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " kW" : Math.round(v) + " W";
-      const sol = this._wsv("production_entity"); const grid = this._wsv("grid_entity");
-      let conso = this._wsv("consumption_entity");
-      if (conso == null && (sol != null || grid != null)) conso = Math.max(0, sol || 0) + Math.max(0, grid || 0);
       const parts = [];
-      if (sol != null) parts.push(`<span class="ss-gi${conso != null && Math.max(0, sol) >= conso ? " dom" : ""}"><span class="ss-gd" style="background:#f8a5c2"></span>Solaire ${f(Math.max(0, sol))}</span>`);
-      if (conso != null) parts.push(`<span class="ss-gi${sol == null || conso > Math.max(0, sol) ? " dom" : ""}"><span class="ss-gd" style="background:#7fb0ff"></span>Conso ${f(Math.max(0, conso))}</span>`);
+      if (sol != null) parts.push(`<span class="ss-gi${solarDom ? " dom" : ""}"><span class="ss-gd" style="background:#f8a5c2"></span>Solaire ${f(s)}</span>`);
+      if (grid != null) parts.push(`<span class="ss-gi${!solarDom ? " dom" : ""}"><span class="ss-gd" style="background:#5b9bff"></span>Réseau ${f(g)}</span>`);
       gl.innerHTML = parts.join("");
     }
+    const ct2 = this._ovl.querySelector("#jct");
+    if (ct2 && (sol != null || grid != null)) ct2.style.color = solarDom ? "#f8a5c2" : "#6aa3ff";
   }
   async _fetchAgenda() {
     if (!this._cals.length || !this._hass) return;
