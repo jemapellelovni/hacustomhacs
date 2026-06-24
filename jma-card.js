@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.32.0";
+const VERSION = "0.33.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -1389,6 +1389,13 @@ class JmaPopup extends HTMLElement {
       this._sonosTick();
       return;
     }
+    if (this._kind() === "scenes") {
+      const n = (this._config.scenes || []).length;
+      this.shadowRoot.getElementById("ht").textContent = this._config.name ? this._config.name + " — Ambiances" : "Ambiances";
+      this.shadowRoot.getElementById("hs").textContent = n + " scène" + (n > 1 ? "s" : "");
+      this.shadowRoot.getElementById("hi").setAttribute("icon", "mdi:palette");
+      return;
+    }
     if (this._kind() === "ev" || this._kind() === "energy") {
       const ev = this._kind() === "ev";
       this.shadowRoot.getElementById("ht").textContent = ev ? (this._config.name || "Voiture") : (this._config.title || "Énergie");
@@ -1436,6 +1443,7 @@ class JmaPopup extends HTMLElement {
     if (this._kind() === "energy") return this._energyBody(body);
     if (this._kind() === "agenda") return this._agendaBody(body);
     if (this._kind() === "sonos") return this._sonosBody(body);
+    if (this._kind() === "scenes") return this._scenesBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -1954,6 +1962,25 @@ class JmaPopup extends HTMLElement {
       const s = this._hass.states[id], b = this.shadowRoot.querySelector(`.pchip[data-sw="${id}"]`);
       if (b && s) b.classList.toggle("on", s.state === "on");
     });
+  }
+  _scenesBody(body) {
+    const list = this._config.scenes || [];
+    const row = document.createElement("div"); row.className = "row btns";
+    if (!list.length) row.innerHTML = `<div class="hsub">Aucune ambiance</div>`;
+    list.forEach((eid) => {
+      const s = this._hass.states[eid];
+      const nm = (this._config.names && this._config.names[eid]) || ((s && s.attributes.friendly_name) || eid);
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = nm;
+      const icon = (s && s.attributes.icon) || "mdi:palette";
+      b.innerHTML = `<ha-icon icon="${icon}" style="--mdc-icon-size:18px;vertical-align:-4px;margin-right:5px;"></ha-icon>${nm}`;
+      b.addEventListener("click", () => {
+        this._call(eid.split(".")[0], "turn_on", { entity_id: eid });
+        if (window.jmaToast) jmaToast({ title: this._config.name || "Ambiances", message: "▶ " + nm, icon: "mdi:palette", color: this._config.color });
+        this._close();
+      });
+      row.appendChild(b);
+    });
+    body.appendChild(row);
   }
   _energyBody(body) {
     const num = (k) => { const e = this._config[k]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; };
@@ -2952,6 +2979,15 @@ class JmaRoomCard extends HTMLElement {
     p.addEventListener("jma-close", () => { this._popup = null; });
     document.body.appendChild(p); this._popup = p;
   }
+  _openScenes() {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { kind: "scenes", scenes: this._scenes, names: this._config.names, name: this._config.name,
+      color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
@@ -3000,10 +3036,7 @@ class JmaRoomCard extends HTMLElement {
     if (this._climate) add("climate", this._climate, "mdi:thermostat", "Climat", () => this._openPopup(this._climate));
     if (this._cover) add("cover", this._cover, "mdi:window-shutter", "Volet", () => this._openPopup(this._cover));
     if (this._media) add("media", this._media, "mdi:music", "Média", () => this._openPopup(this._media));
-    this._scenes.forEach((eid) => add("scene", eid, "mdi:palette", this._short(eid), () => {
-      this._call(eid.split(".")[0], "turn_on", { entity_id: eid });
-      if (window.jmaToast) jmaToast({ title: this._config.name, message: "▶ " + this._short(eid), icon: "mdi:palette", color: this._config.color });
-    }));
+    if (this._scenes.length) add("scenes", null, "mdi:palette", "Ambiances", () => this._openScenes());
     this._extra.forEach((eid) => {
       const s = this._st(eid), a = s ? s.attributes : {};
       const icon = (a && a.icon) || DC_ICON[a && a.device_class] || { light: "mdi:lightbulb", switch: "mdi:power-socket-eu", sensor: "mdi:eye", binary_sensor: "mdi:checkbox-blank-circle", lock: "mdi:lock", fan: "mdi:fan" }[eid.split(".")[0]] || "mdi:circle";
@@ -3046,6 +3079,8 @@ class JmaRoomCard extends HTMLElement {
         ch.val.textContent = s.attributes.media_artist || (s.state === "playing" ? "Lecture" : s.state === "paused" ? "Pause" : s.state === "off" ? "Éteint" : "À l'arrêt");
         ch.ic.setAttribute("icon", s.state === "playing" ? "mdi:music-note" : "mdi:music");
         ch.el.classList.toggle("on", ["playing", "paused", "on"].includes(s.state));
+      } else if (ch.role === "scenes") {
+        ch.val.textContent = this._scenes.length + " ambiance" + (this._scenes.length > 1 ? "s" : "");
       } else if (ch.role === "entity") {
         const s = this._st(ch.entity); const d = ch.entity.split(".")[0];
         const on = s && (d === "cover" ? s.state === "open" : d === "media_player" ? ["playing", "paused", "on"].includes(s.state) : d === "climate" ? (s.state !== "off" && s.state !== "unavailable") : s.state === "on");
