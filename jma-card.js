@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.50.0";
+const VERSION = "0.51.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1333,6 +1333,34 @@ class JmaPopup extends HTMLElement {
         .gstep:active{transform:scale(.9);}.gstep ha-icon{--mdc-icon-size:20px;}
         .gset{font-weight:800;font-size:1.3rem;min-width:46px;text-align:center;letter-spacing:-.5px;transition:color .2s;}
         .grow.editing .gset{color:var(--jma-rose);}
+        /* tuiles thermostat */
+        .tcard{display:flex;flex-direction:column;gap:9px;background:var(--p-surf);border:1px solid var(--p-line);border-radius:18px;padding:11px 13px 12px;position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s;}
+        .tcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:transparent;transition:background .3s;}
+        .tcard.warn::before{background:linear-gradient(180deg,#ffb24d,#ff7e42);}
+        .tcard.cool::before{background:linear-gradient(180deg,#7fb0ff,#5b9bff);}
+        .tcard.warn{border-color:rgba(255,140,66,.42);box-shadow:0 4px 18px rgba(255,126,66,.12);}
+        .tcard.cool{border-color:rgba(110,160,255,.42);box-shadow:0 4px 18px rgba(91,155,255,.12);}
+        .thead{display:flex;align-items:center;gap:9px;}
+        .ticon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--p-track);flex:none;transition:background .3s;}
+        .ticon ha-icon{--mdc-icon-size:20px;color:var(--p-text);transition:color .3s;}
+        .tcard.on .ticon{background:var(--jma-grad);}.tcard.on .ticon ha-icon{color:var(--jma-dark);}
+        .tcard.warn .ticon{background:linear-gradient(135deg,#ffb24d,#ff7e42);}.tcard.warn .ticon ha-icon{color:#3a1d00;}
+        .tcard.cool .ticon{background:linear-gradient(135deg,#7fb0ff,#5b9bff);}.tcard.cool .ticon ha-icon{color:#04204a;}
+        .tname{font-weight:700;font-size:.95rem;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .tact{font-size:.64rem;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--p-track);color:var(--p-mut);white-space:nowrap;}
+        .tcard.warn .tact{background:rgba(255,140,66,.18);color:#ff9248;}
+        .tcard.cool .tact{background:rgba(110,160,255,.18);color:#6aa3ff;}
+        .tstep{display:flex;align-items:center;justify-content:center;gap:20px;padding:2px 0 0;}
+        .tbtn{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;background:var(--p-track);color:var(--p-text);display:flex;align-items:center;justify-content:center;transition:transform .08s,background .2s;}
+        .tbtn:active{transform:scale(.86);}.tbtn ha-icon{--mdc-icon-size:24px;}
+        .tval{font-weight:800;font-size:2.15rem;min-width:96px;text-align:center;letter-spacing:-1px;line-height:1;transition:color .2s;font-variant-numeric:tabular-nums;}
+        .tcard.warn .tval{color:#ff9248;}.tcard.cool .tval{color:#6aa3ff;}
+        .tcard.editing .tval{color:var(--jma-rose);}
+        .tsub{text-align:center;font-size:.74rem;opacity:.62;margin-top:-3px;}
+        .tmodes{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:1px;}
+        .tmode{width:34px;height:34px;border-radius:11px;border:1px solid var(--p-line);background:transparent;color:var(--p-mut);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,background .15s,color .15s,border-color .15s;}
+        .tmode:active{transform:scale(.9);}.tmode ha-icon{--mdc-icon-size:19px;}
+        .tmode.on{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);}
         .gslider{flex-basis:100%;}.gslider .slider{height:30px;}
         .swatches{display:flex;gap:10px;flex-wrap:wrap;}
         .sw{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid var(--p-line);transition:transform .2s;}
@@ -2099,53 +2127,61 @@ class JmaPopup extends HTMLElement {
   _climatesBody(body) {
     const list = this._config.entities || [];
     this._climRows = {};
-    const MODE_ICON = { off: "mdi:power", heat: "mdi:fire", cool: "mdi:snowflake", auto: "mdi:autorenew", heat_cool: "mdi:autorenew", dry: "mdi:water-percent", fan_only: "mdi:fan" };
+    const MODE_ICON = { off: "mdi:power", heat: "mdi:fire", cool: "mdi:snowflake", auto: "mdi:autorenew", heat_cool: "mdi:sun-snowflake-variant", dry: "mdi:water-percent", fan_only: "mdi:fan" };
     const grid = document.createElement("div"); grid.className = "grid2"; body.appendChild(grid);
     list.forEach((eid) => {
       const s = this._hass.states[eid]; if (!s) return; const a0 = s.attributes;
       const nm = (this._config.names && this._config.names[eid]) || (a0.friendly_name || eid);
-      const row = document.createElement("div"); row.className = "grow climate";
-      row.innerHTML = `<div class="gicon"><ha-icon class="gi" icon="mdi:thermostat"></ha-icon></div>` +
-        `<div class="gmeta"><div class="gn">${nm}</div><div class="gs clst"></div></div>` +
-        `<div class="gctl"><button class="gstep" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="gset clset">—</div><button class="gstep" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>` +
-        `<div class="gmodes chiprow" style="flex-basis:100%;margin-top:2px;"></div>`;
-      const R = { row, pend: null, timer: null, hold: null };
-      const setEl = row.querySelector(".clset");
+      const card = document.createElement("div"); card.className = "tcard climate";
+      card.innerHTML =
+        `<div class="thead"><div class="ticon"><ha-icon class="ti" icon="mdi:thermostat"></ha-icon></div>` +
+        `<div class="tname">${nm}</div><div class="tact">—</div></div>` +
+        `<div class="tstep"><button class="tbtn" data-d="-1" aria-label="Baisser"><ha-icon icon="mdi:minus"></ha-icon></button>` +
+        `<div class="tval">—</div>` +
+        `<button class="tbtn" data-d="1" aria-label="Monter"><ha-icon icon="mdi:plus"></ha-icon></button></div>` +
+        `<div class="tsub"></div>` +
+        `<div class="tmodes"></div>`;
+      const R = { row: card, pend: null, timer: null, hold: null };
+      const valEl = card.querySelector(".tval");
       // pas à pas FLUIDE : maj immédiate locale + commit groupé (anti-lag de l'intégration)
       const bump = (dir) => {
         const st = this._hass.states[eid]; if (!st) return; const a = st.attributes; const step = a.target_temp_step || 0.5;
         const min = a.min_temp ?? 7, max = a.max_temp ?? 35;
         const base = R.pend != null ? R.pend : (a.temperature ?? min);
         R.pend = Math.round(Math.max(min, Math.min(max, Math.round((base + dir * step) / step) * step)) * 10) / 10;
-        setEl.textContent = R.pend + "°"; row.classList.add("editing");
+        valEl.textContent = R.pend + "°"; card.classList.add("editing");
         clearTimeout(R.timer);
         R.timer = setTimeout(() => {
           this._call("climate", "set_temperature", { entity_id: eid, temperature: R.pend });
-          clearTimeout(R.hold); R.hold = setTimeout(() => { R.pend = null; row.classList.remove("editing"); }, 3000);
+          clearTimeout(R.hold); R.hold = setTimeout(() => { R.pend = null; card.classList.remove("editing"); }, 3000);
         }, 500);
       };
-      row.querySelectorAll(".gstep").forEach((b) => b.addEventListener("click", () => bump(Number(b.dataset.d))));
-      const mc = row.querySelector(".gmodes");
+      card.querySelectorAll(".tbtn").forEach((b) => b.addEventListener("click", () => bump(Number(b.dataset.d))));
+      const mc = card.querySelector(".tmodes");
       (a0.hvac_modes || []).forEach((m) => {
-        const b = document.createElement("button"); b.className = "pchip"; b.dataset.m = m;
-        b.innerHTML = `<ha-icon icon="${MODE_ICON[m] || "mdi:thermostat"}" style="--mdc-icon-size:15px;vertical-align:-3px;margin-right:3px"></ha-icon>${HVAC_FR[m] || m}`;
+        const b = document.createElement("button"); b.className = "tmode"; b.dataset.m = m;
+        b.title = HVAC_FR[m] || m;
+        b.innerHTML = `<ha-icon icon="${MODE_ICON[m] || "mdi:thermostat"}"></ha-icon>`;
         b.addEventListener("click", () => this._call("climate", "set_hvac_mode", { entity_id: eid, hvac_mode: m }));
         mc.appendChild(b);
       });
-      grid.appendChild(row); this._climRows[eid] = R;
+      grid.appendChild(card); this._climRows[eid] = R;
     });
     this._climatesTick = () => {
       list.forEach((eid) => {
-        const s = this._hass.states[eid], R = this._climRows[eid]; if (!s || !R) return; const a = s.attributes, row = R.row;
-        if (R.pend == null) row.querySelector(".clset").textContent = a.temperature != null ? a.temperature + "°" : "—";
-        const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "° " : "";
-        const hum = a.current_humidity != null ? " · 💧" + a.current_humidity + "%" : "";
-        row.querySelector(".clst").textContent = cur + "· " + (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state) + hum;
-        row.classList.toggle("on", s.state !== "off" && s.state !== "unavailable" && !["heating", "cooling", "preheating"].includes(a.hvac_action));
-        row.classList.toggle("warn", ["heating", "preheating"].includes(a.hvac_action));
-        row.classList.toggle("cool", a.hvac_action === "cooling");
-        row.querySelector(".gi").setAttribute("icon", a.hvac_action === "cooling" ? "mdi:snowflake" : ["heating", "preheating"].includes(a.hvac_action) ? "mdi:fire" : "mdi:thermostat");
-        row.querySelectorAll(".gmodes .pchip").forEach((b) => b.classList.toggle("on", b.dataset.m === s.state));
+        const s = this._hass.states[eid], R = this._climRows[eid]; if (!s || !R) return; const a = s.attributes, card = R.row;
+        if (R.pend == null) card.querySelector(".tval").textContent = a.temperature != null ? a.temperature + "°" : "—";
+        const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "°" : "";
+        const hum = a.current_humidity != null ? " · 💧 " + a.current_humidity + "%" : "";
+        card.querySelector(".tsub").textContent = (cur + hum) || "—";
+        const heating = ["heating", "preheating"].includes(a.hvac_action), cooling = a.hvac_action === "cooling";
+        const off = s.state === "off" || s.state === "unavailable";
+        card.querySelector(".tact").textContent = off ? "Éteint" : (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
+        card.classList.toggle("on", !off && !heating && !cooling);
+        card.classList.toggle("warn", heating);
+        card.classList.toggle("cool", cooling);
+        card.querySelector(".ti").setAttribute("icon", cooling ? "mdi:snowflake" : heating ? "mdi:fire" : "mdi:thermostat");
+        card.querySelectorAll(".tmode").forEach((b) => b.classList.toggle("on", b.dataset.m === s.state));
       });
     };
     this._climatesTick();
