@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.59.1";
+const VERSION = "0.60.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3302,6 +3302,95 @@ class JmaCalendarCard extends HTMLElement {
   }
 }
 jmaDef("jma-calendar-card", JmaCalendarCard);
+// =============================================================================
+//  🌤️ MÉTÉO HERO — header météo large (actuel + prévisions, dégradé selon le temps)
+// =============================================================================
+const JMA_WFR = { "sunny": "Ensoleillé", "clear-night": "Nuit claire", "partlycloudy": "Partiellement nuageux", "cloudy": "Nuageux",
+  "rainy": "Pluie", "pouring": "Fortes pluies", "snowy": "Neige", "snowy-rainy": "Pluie & neige", "fog": "Brouillard",
+  "windy": "Venteux", "windy-variant": "Venteux", "lightning": "Orage", "lightning-rainy": "Orage & pluie", "hail": "Grêle", "exceptional": "Exceptionnel" };
+const JMA_WGRAD = { "sunny": "linear-gradient(135deg,#f7b955,#ef8a4c)", "clear-night": "linear-gradient(135deg,#33406b,#1a2138)",
+  "partlycloudy": "linear-gradient(135deg,#7ba6d8,#5777aa)", "cloudy": "linear-gradient(135deg,#94a1b2,#6a7682)",
+  "fog": "linear-gradient(135deg,#9aa3ad,#6f7882)", "rainy": "linear-gradient(135deg,#5e83b8,#37527a)",
+  "pouring": "linear-gradient(135deg,#4f6f9e,#2c3f5e)", "snowy": "linear-gradient(135deg,#bcccdc,#8fa6bd)",
+  "snowy-rainy": "linear-gradient(135deg,#8aa0bb,#5d7390)", "lightning": "linear-gradient(135deg,#4c4368,#272140)",
+  "lightning-rainy": "linear-gradient(135deg,#4a4566,#2a2a44)", "hail": "linear-gradient(135deg,#9fb3c8,#6b8299)", "exceptional": "linear-gradient(135deg,#b06a6a,#7d3a3a)" };
+class JmaWeatherHeroCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._fc = []; }
+  setConfig(c) { if (!c.entity) throw new Error("météo : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, days: 6, ...c }; }
+  getCardSize() { return 4; }
+  static getStubConfig() { return { entity: "weather.home" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (first || this._stale()) this._fetch(); }
+  _stale() { return !this._last || Date.now() - this._last > 600000; }
+  get _s() { return this._hass.states[this._config.entity]; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .hero{position:relative;border-radius:24px;overflow:hidden;color:#fff;padding:22px 24px;display:flex;flex-direction:column;gap:18px;
+        box-shadow:0 14px 38px rgba(40,40,60,.18);transition:background .6s;min-height:0;}
+      .hero::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 80% at 80% 0%,rgba(255,255,255,.18),transparent 60%);pointer-events:none;}
+      .htop{display:flex;align-items:center;gap:20px;position:relative;z-index:1;}
+      .hicon{--mdc-icon-size:78px;filter:drop-shadow(0 5px 12px rgba(0,0,0,.28));flex:none;}
+      .htemp{font-size:3.6rem;font-weight:300;line-height:.85;letter-spacing:-2px;font-variant-numeric:tabular-nums;}
+      .hinfo{flex:1;min-width:0;}
+      .hcond{font-size:1.1rem;font-weight:800;}
+      .hloc{font-size:.82rem;opacity:.88;font-weight:600;margin-top:1px;}
+      .hmeta{display:flex;gap:15px;flex-wrap:wrap;font-size:.78rem;font-weight:700;opacity:.95;margin-top:8px;}
+      .hmeta span{display:flex;align-items:center;gap:4px;}.hmeta ha-icon{--mdc-icon-size:16px;opacity:.85;}
+      .hfc{display:flex;gap:8px;position:relative;z-index:1;}
+      .fcd{flex:1;background:rgba(255,255,255,.17);border:1px solid rgba(255,255,255,.12);border-radius:15px;padding:10px 5px;display:flex;flex-direction:column;align-items:center;gap:5px;}
+      .fcd .d{font-size:.65rem;font-weight:800;text-transform:uppercase;opacity:.92;letter-spacing:.3px;}
+      .fcd ha-icon{--mdc-icon-size:26px;}
+      .fcd .hi{font-size:.84rem;font-weight:800;}.fcd .lo{font-size:.74rem;opacity:.72;font-weight:700;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="hero" id="hero">
+        <div class="htop">
+          <ha-icon class="hicon" id="hic" icon="mdi:weather-partly-cloudy"></ha-icon>
+          <div class="htemp" id="htemp">—</div>
+          <div class="hinfo"><div class="hcond" id="hcond">—</div><div class="hloc" id="hloc"></div>
+            <div class="hmeta" id="hmeta"></div></div>
+        </div>
+        <div class="hfc" id="hfc"></div>
+      </div></ha-card>`;
+  }
+  async _fetch() {
+    if (!this._hass) return; this._last = Date.now();
+    try {
+      const e = this._config.entity;
+      const r = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type: "daily" }, target: { entity_id: e }, return_response: true });
+      this._fc = (r && r.response && r.response[e] && r.response[e].forecast) || [];
+      this._renderFc();
+    } catch (e) {}
+  }
+  _update() {
+    const s = this._s; if (!s) return; const a = s.attributes;
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    $("hic").setAttribute("icon", JMA_WICON[s.state] || "mdi:weather-cloudy");
+    $("htemp").textContent = a.temperature != null ? Math.round(a.temperature) + "°" : "—";
+    $("hcond").textContent = JMA_WFR[s.state] || s.state;
+    $("hloc").textContent = this._config.name || a.friendly_name || "";
+    const meta = [];
+    if (a.humidity != null) meta.push(`<span><ha-icon icon="mdi:water-percent"></ha-icon>${a.humidity}%</span>`);
+    if (a.wind_speed != null) meta.push(`<span><ha-icon icon="mdi:weather-windy"></ha-icon>${Math.round(a.wind_speed)} ${a.wind_speed_unit || "km/h"}</span>`);
+    if (a.uv_index != null) meta.push(`<span><ha-icon icon="mdi:weather-sunny-alert"></ha-icon>UV ${Math.round(a.uv_index)}</span>`);
+    if (a.pressure != null) meta.push(`<span><ha-icon icon="mdi:gauge"></ha-icon>${Math.round(a.pressure)} ${a.pressure_unit || ""}</span>`);
+    $("hmeta").innerHTML = meta.join("");
+    const grad = JMA_WGRAD[s.state] || JMA_WGRAD.partlycloudy;
+    $("hero").style.background = grad;
+  }
+  _renderFc() {
+    const host = this.shadowRoot.getElementById("hfc"); if (!host) return;
+    const dn = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+    const days = this._fc.slice(0, this._config.days || 6);
+    host.innerHTML = days.map((f) => {
+      const d = new Date(f.datetime);
+      const hi = f.temperature != null ? Math.round(f.temperature) + "°" : "";
+      const lo = f.templow != null ? Math.round(f.templow) + "°" : "";
+      return `<div class="fcd"><div class="d">${dn[d.getDay()]}</div><ha-icon icon="${JMA_WICON[f.condition] || "mdi:weather-cloudy"}"></ha-icon><div class="hi">${hi}</div><div class="lo">${lo}</div></div>`;
+    }).join("");
+  }
+}
+jmaDef("jma-weather-hero-card", JmaWeatherHeroCard);
 
 // =============================================================================
 //  ⚡ ÉNERGIE — conso & production (bleu EDF / rose solaire dominant)
@@ -4263,7 +4352,92 @@ class JmaSecurityCard extends HTMLElement {
       d.querySelector(".pers").classList.toggle("on", !!(pers && pers.state === "on"));
     });
   }
-  _nm(s, e) { return (this._config.names && this._config.names[e]) || (s && s.attributes.friendly_name) || e; }
+  _nm(s, e) { let n = (this._config.names && this._config.names[e]) || (s && s.attributes.friendly_name) || e; return n.replace(/\s+(Fumée|Humidité|Porte|Mouvement|Contact externe.*|Alerte contact.*|Water leak|Smoke|Occupancy)$/i, "").trim(); }
+  _alarm(svc) { const c = this._config; const data = { entity_id: c.alarm_entity }; if (c.code != null) data.code = String(c.code); this._hass.callService("alarm_control_panel", svc, data); }
+  _buildPanel() {
+    const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+      .secpanel{display:flex;flex-direction:column;gap:12px;padding:14px;}
+      .spa{display:flex;align-items:center;gap:12px;}
+      .spabadge{width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--jma-surf2);flex:none;transition:background .3s;}
+      .spabadge ha-icon{--mdc-icon-size:28px;color:var(--jma-icon);}
+      .spabadge.armed{background:var(--jma-grad);}.spabadge.armed ha-icon{color:var(--jma-dark);}
+      .spabadge.trig{background:#ff3b30;animation:jma-pulse 1s infinite;}.spabadge.trig ha-icon{color:#fff;}
+      .spast b{font-weight:800;font-size:1.2rem;display:block;}.spast small{font-size:.78rem;opacity:.6;}
+      .sparm{display:flex;gap:7px;flex-wrap:wrap;}
+      .sparmb{flex:1;min-width:68px;padding:11px 6px;border:none;border-radius:13px;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);font-weight:700;font-size:.75rem;display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .08s;}
+      .sparmb:active{transform:scale(.95);}.sparmb ha-icon{--mdc-icon-size:20px;}.sparmb.on{background:var(--jma-grad);color:var(--jma-dark);}
+      .splbl{font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;opacity:.5;margin:5px 0 -3px;}
+      .spzones{display:flex;gap:6px;flex-wrap:wrap;}
+      .spz{padding:7px 11px;border-radius:10px;background:var(--jma-surf3);color:var(--jma-text);font-size:.74rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;}
+      .spz ha-icon{--mdc-icon-size:14px;}.spz.armed{background:var(--jma-grad);color:var(--jma-dark);}
+      .spgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+      .spi{display:flex;align-items:center;gap:8px;background:var(--jma-surf2);border-radius:12px;padding:8px 10px;border:1px solid transparent;transition:border-color .3s,background .3s;}
+      .spi .si{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;}
+      .spi .si ha-icon{--mdc-icon-size:16px;color:var(--jma-icon);}
+      .spi.ok .si ha-icon{color:#34c759;}
+      .spi.alert{border-color:rgba(255,59,48,.5);background:rgba(255,59,48,.1);}
+      .spi.alert .si{background:#ff3b30;}.spi.alert .si ha-icon{color:#fff;}
+      .spi .sn{flex:1;min-width:0;font-weight:700;font-size:.77rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .spi .sv{font-size:.65rem;font-weight:800;opacity:.6;white-space:nowrap;}.spi.alert .sv{color:#ff5a4d;opacity:1;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="secpanel">
+        <div class="spa"><div class="spabadge" id="badge"><ha-icon id="bic" icon="mdi:shield-home"></ha-icon></div>
+          <div class="spast"><b id="st">—</b><small id="sub"></small></div></div>
+        <div class="sparm" id="arm"></div>
+        <div class="splbl" id="zlbl" hidden>Zones</div>
+        <div class="spzones" id="zones"></div>
+        <div id="sections"></div>
+      </div></ha-card>`;
+    const arm = this.shadowRoot.getElementById("arm");
+    const modes = [["alarm_disarm", "Désarmer", "disarmed", "mdi:shield-off-outline", true]];
+    if (feat & 2) modes.push(["alarm_arm_away", "Absent", "armed_away", "mdi:shield-lock", true]);
+    if (feat & 1) modes.push(["alarm_arm_home", "Maison", "armed_home", "mdi:shield-home", true]);
+    if (feat & 4) modes.push(["alarm_arm_night", "Nuit", "armed_night", "mdi:weather-night", true]);
+    modes.forEach(([svc, label, st, icon]) => { const b = document.createElement("button"); b.className = "sparmb"; b.dataset.st = st; b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>${label}`; b.addEventListener("click", () => this._alarm(svc)); arm.appendChild(b); });
+  }
+  _buildSections() {
+    this._secsBuilt = true; const g = this._groups(); const host = this.shadowRoot.getElementById("sections"); host.innerHTML = ""; this._secItems = [];
+    const sect = (title, list, okIcon, alertIcon, okWord) => {
+      if (!list.length) return;
+      const l = document.createElement("div"); l.className = "splbl"; l.textContent = title; host.appendChild(l);
+      const grid = document.createElement("div"); grid.className = "spgrid"; host.appendChild(grid);
+      list.forEach((e) => { const s = this._st(e); if (!s) return; const it = document.createElement("div"); it.className = "spi";
+        it.innerHTML = `<div class="si"><ha-icon class="sic"></ha-icon></div><div class="sn">${this._nm(s, e)}</div><div class="sv"></div>`;
+        grid.appendChild(it); this._secItems.push({ e, it, okIcon, alertIcon, okWord }); });
+    };
+    sect("💧 Fuites d'eau", g.leak, "mdi:water-check", "mdi:water-alert", "Sec");
+    sect("🔥 Fumée / Incendie", g.smoke, "mdi:smoke-detector-variant", "mdi:smoke-detector-variant-alert", "RAS");
+    sect("🚪 Ouvertures", g.door, "mdi:door-closed", "mdi:door-open", "Fermé");
+    sect("🏃 Mouvement", g.motion, "mdi:motion-sensor-off", "mdi:motion-sensor", "Calme");
+    this._secTick = () => { this._secItems.forEach(({ e, it, okIcon, alertIcon, okWord }) => { const s = this._st(e); if (!s) return; const on = s.state === "on";
+      it.classList.toggle("alert", on); it.classList.toggle("ok", !on); it.querySelector(".sic").setAttribute("icon", on ? alertIcon : okIcon);
+      it.querySelector(".sv").textContent = on ? "⚠ ALERTE" : okWord; }); };
+  }
+  _updatePanel() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const al = this._st(this._config.alarm_entity);
+    if (al) {
+      const armed = ("" + al.state).startsWith("armed"), trig = al.state === "triggered";
+      $("st").textContent = ALARM_FR[al.state] || al.state;
+      $("sub").textContent = trig ? "⚠ Intrusion détectée" : armed ? "Système armé" : "Système désarmé";
+      $("bic").setAttribute("icon", trig ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-home-outline");
+      const bd = $("badge"); bd.classList.toggle("armed", armed && !trig); bd.classList.toggle("trig", trig);
+      this.shadowRoot.querySelectorAll(".sparmb").forEach((b) => b.classList.toggle("on", al.state === b.dataset.st));
+    }
+    const zones = (this._config.subzones || []).filter((e) => this._st(e));
+    if (zones.length) {
+      $("zlbl").hidden = false; const zwrap = $("zones");
+      if (!this._zonesBuilt) { this._zonesBuilt = true; zwrap.innerHTML = "";
+        zones.forEach((e) => { const b = document.createElement("button"); b.className = "spz"; b.dataset.e = e; b.innerHTML = `<ha-icon icon="mdi:shield"></ha-icon><span class="zn"></span>`;
+          b.addEventListener("click", () => { const s = this._st(e); const armed = ("" + s.state).startsWith("armed"); const data = { entity_id: e }; if (this._config.code != null) data.code = String(this._config.code); this._hass.callService("alarm_control_panel", armed ? "alarm_disarm" : "alarm_arm_away", data); }); zwrap.appendChild(b); });
+      }
+      zones.forEach((e) => { const b = $("zones").querySelector(`.spz[data-e="${e}"]`); const s = this._st(e); if (!b || !s) return; b.classList.toggle("armed", ("" + s.state).startsWith("armed")); b.querySelector(".zn").textContent = (s.attributes.friendly_name || e).replace(/^maison\s*/i, "") || "Maison"; });
+    }
+    if (!this._secsBuilt) this._buildSections();
+    if (this._secTick) this._secTick();
+  }
 }
 jmaDef("jma-security-card", JmaSecurityCard);
 
@@ -4684,6 +4858,7 @@ REG("jma-agenda-card", "JMA Agenda", "Événements calendrier, nb de jours confi
 REG("jma-calendar-card", "JMA Calendrier", "Vue mois complète : grille, météo du jour, détail au tap.");
 REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solaire dominant.");
 REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jour.");
+REG("jma-weather-hero-card", "JMA Météo Hero", "Header météo large, dégradé selon le temps + prévisions.");
 REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
 REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
