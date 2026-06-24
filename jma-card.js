@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.46.0";
+const VERSION = "0.47.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -93,7 +93,7 @@ const BASE_CSS = `
 
   /* slider horizontal */
   .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:none;
-    background:var(--jma-track);touch-action:none;cursor:pointer;transition:box-shadow .15s;}
+    background:var(--jma-track);touch-action:pan-y;cursor:pointer;transition:box-shadow .15s;}
   .slider[hidden]{display:none;}
   .slider.precise{box-shadow:inset 0 0 0 2px var(--jma-blue);}
   .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;
@@ -305,35 +305,41 @@ function jmaSlider({ fmt, onCommit, onInput, icon, label }) {
     const vd = Math.abs(e.clientY - startY);
     return vd < 24 ? 1 : Math.max(0.06, 1 - (vd - 24) / 200);
   };
+  // engagement uniquement sur geste horizontal -> le scroll vertical passe sans rien changer
+  let engaged = false, aborted = false, downId = null, startX = 0;
   el.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
-    el.dragging = true;
-    el.classList.add("dragging");
-    try { el.setPointerCapture(e.pointerId); } catch (_) {}
-    startY = e.clientY; anchorX = e.clientX;
-    pending = valFromX(e); anchorV = pending;   // saut absolu à l'endroit touché
-    paint(pending);
-    if (onInput) onInput(Math.round(pending));
+    startX = e.clientX; startY = e.clientY; anchorX = e.clientX; anchorV = cur;
+    pending = null; engaged = false; aborted = false; downId = e.pointerId;
   });
   el.addEventListener("pointermove", (e) => {
-    if (!el.dragging) return;
+    if (downId == null || aborted) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!engaged) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) + 4) { aborted = true; return; } // défilement vertical
+      if (Math.abs(dx) < 6) return;                                                          // pas encore assez horizontal
+      engaged = true; el.dragging = true; el.classList.add("dragging");
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      anchorX = e.clientX; anchorV = cur;
+    }
     const r = el.getBoundingClientRect();
-    const dx = e.clientX - anchorX;
-    pending = Math.max(0, Math.min(100, anchorV + (dx / r.width) * 100 * sens(e)));
+    pending = Math.max(0, Math.min(100, anchorV + ((e.clientX - anchorX) / r.width) * 100 * sens(e)));
     el.classList.toggle("precise", Math.abs(e.clientY - startY) >= 24);
     paint(pending);
     if (onInput) onInput(Math.round(pending));
   });
-  const end = (e) => {
+  const finish = (e, isCancel) => {
     if (e) e.stopPropagation();
-    if (!el.dragging) return;
-    el.dragging = false;
+    if (downId == null) return;
+    const wasEngaged = engaged, wasAborted = aborted;
+    downId = null; engaged = false; aborted = false; el.dragging = false;
     el.classList.remove("dragging", "precise");
-    if (pending != null) onCommit(Math.round(pending));
+    if (wasEngaged) { if (pending != null) onCommit(Math.round(pending)); }
+    else if (!wasAborted && !isCancel && e) { const v = valFromX(e); paint(v); onCommit(Math.round(v)); } // tap volontaire
     pending = null;
   };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
+  el.addEventListener("pointerup", (e) => finish(e, false));
+  el.addEventListener("pointercancel", (e) => finish(e, true));
   el.setValue = (v) => { if (!el.dragging) paint(v); };
   return el;
 }
@@ -1272,6 +1278,10 @@ class JmaPopup extends HTMLElement {
           transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .3s ease;}
         @media(min-width:768px){.back{align-items:center;} .sheet{margin:0;max-height:90vh;}}
         .back.wide .sheet{max-width:640px;}
+        .back.xwide .sheet{max-width:860px;}
+        .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+        @media(max-width:680px){.grid2{grid-template-columns:1fr;}}
+        .grid2 .grow{margin:0;}
         .back.show .sheet{transform:translateY(0);opacity:1;}
         .grab{width:38px;height:4px;border-radius:999px;background:var(--p-grab);margin:0 auto 14px;flex:none;}
         .head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex:none;}
@@ -1321,7 +1331,8 @@ class JmaPopup extends HTMLElement {
         .gctl{display:flex;align-items:center;gap:8px;flex:none;}
         .gstep{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;background:var(--p-track);color:var(--p-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
         .gstep:active{transform:scale(.9);}.gstep ha-icon{--mdc-icon-size:20px;}
-        .gset{font-weight:800;font-size:1.3rem;min-width:46px;text-align:center;letter-spacing:-.5px;}
+        .gset{font-weight:800;font-size:1.3rem;min-width:46px;text-align:center;letter-spacing:-.5px;transition:color .2s;}
+        .grow.editing .gset{color:var(--jma-rose);}
         .gslider{flex-basis:100%;}.gslider .slider{height:30px;}
         .swatches{display:flex;gap:10px;flex-wrap:wrap;}
         .sw{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid var(--p-line);transition:transform .2s;}
@@ -1353,7 +1364,7 @@ class JmaPopup extends HTMLElement {
         .kpk{height:52px;border:none;border-radius:14px;background:var(--p-surf);color:var(--p-text);font-size:1.3rem;
           font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,background .2s;}
         .kpk:active{transform:scale(.93);background:rgba(248,165,194,.24);} .kpk ha-icon{--mdc-icon-size:24px;}
-        .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:1;background:var(--p-track);touch-action:none;cursor:pointer;}
+        .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:1;background:var(--p-track);touch-action:pan-y;cursor:pointer;}
         .slider[hidden]{display:none;}
         .slider:focus-visible{outline:2px solid var(--jma-blue);outline-offset:2px;}
         .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;background:linear-gradient(90deg,var(--jma-blue),var(--jma-rose));transition:width .28s;}
@@ -1422,7 +1433,8 @@ class JmaPopup extends HTMLElement {
     this.shadowRoot.getElementById("x").addEventListener("click", (e) => { e.stopPropagation(); this._close(); });
     this._built = true;
     jmaApplyTheme(this, this._hass, this._config);
-    if (["covers", "climates", "sonos"].includes(this._kind())) this.shadowRoot.getElementById("wrap").classList.add("wide");
+    if (["covers", "sonos"].includes(this._kind())) this.shadowRoot.getElementById("wrap").classList.add("wide");
+    if (this._kind() === "climates") this.shadowRoot.getElementById("wrap").classList.add("xwide");
     this._renderBody();
     this._refresh();
   }
@@ -2088,6 +2100,7 @@ class JmaPopup extends HTMLElement {
     const list = this._config.entities || [];
     this._climRows = {};
     const MODE_ICON = { off: "mdi:power", heat: "mdi:fire", cool: "mdi:snowflake", auto: "mdi:autorenew", heat_cool: "mdi:autorenew", dry: "mdi:water-percent", fan_only: "mdi:fan" };
+    const grid = document.createElement("div"); grid.className = "grid2"; body.appendChild(grid);
     list.forEach((eid) => {
       const s = this._hass.states[eid]; if (!s) return; const a0 = s.attributes;
       const nm = (this._config.names && this._config.names[eid]) || (a0.friendly_name || eid);
@@ -2096,27 +2109,35 @@ class JmaPopup extends HTMLElement {
         `<div class="gmeta"><div class="gn">${nm}</div><div class="gs clst"></div></div>` +
         `<div class="gctl"><button class="gstep" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="gset clset">—</div><button class="gstep" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>` +
         `<div class="gmodes chiprow" style="flex-basis:100%;margin-top:2px;"></div>`;
-      row.querySelectorAll(".gstep").forEach((b) => b.addEventListener("click", () => {
+      const R = { row, pend: null, timer: null, hold: null };
+      const setEl = row.querySelector(".clset");
+      // pas à pas FLUIDE : maj immédiate locale + commit groupé (anti-lag de l'intégration)
+      const bump = (dir) => {
         const st = this._hass.states[eid]; if (!st) return; const a = st.attributes; const step = a.target_temp_step || 0.5;
-        const min = a.min_temp ?? 7, max = a.max_temp ?? 35; let t = (a.temperature ?? min) + Number(b.dataset.d) * step;
-        t = Math.max(min, Math.min(max, Math.round(t / step) * step));
-        this._call("climate", "set_temperature", { entity_id: eid, temperature: Math.round(t * 10) / 10 });
-      }));
-      // chips de mode (off/chauffe/refroidir/auto…)
-      const modes = a0.hvac_modes || [];
+        const min = a.min_temp ?? 7, max = a.max_temp ?? 35;
+        const base = R.pend != null ? R.pend : (a.temperature ?? min);
+        R.pend = Math.round(Math.max(min, Math.min(max, Math.round((base + dir * step) / step) * step)) * 10) / 10;
+        setEl.textContent = R.pend + "°"; row.classList.add("editing");
+        clearTimeout(R.timer);
+        R.timer = setTimeout(() => {
+          this._call("climate", "set_temperature", { entity_id: eid, temperature: R.pend });
+          clearTimeout(R.hold); R.hold = setTimeout(() => { R.pend = null; row.classList.remove("editing"); }, 3000);
+        }, 500);
+      };
+      row.querySelectorAll(".gstep").forEach((b) => b.addEventListener("click", () => bump(Number(b.dataset.d))));
       const mc = row.querySelector(".gmodes");
-      modes.forEach((m) => {
+      (a0.hvac_modes || []).forEach((m) => {
         const b = document.createElement("button"); b.className = "pchip"; b.dataset.m = m;
         b.innerHTML = `<ha-icon icon="${MODE_ICON[m] || "mdi:thermostat"}" style="--mdc-icon-size:15px;vertical-align:-3px;margin-right:3px"></ha-icon>${HVAC_FR[m] || m}`;
         b.addEventListener("click", () => this._call("climate", "set_hvac_mode", { entity_id: eid, hvac_mode: m }));
         mc.appendChild(b);
       });
-      body.appendChild(row); this._climRows[eid] = row;
+      grid.appendChild(row); this._climRows[eid] = R;
     });
     this._climatesTick = () => {
       list.forEach((eid) => {
-        const s = this._hass.states[eid], row = this._climRows[eid]; if (!s || !row) return; const a = s.attributes;
-        row.querySelector(".clset").textContent = a.temperature != null ? a.temperature + "°" : "—";
+        const s = this._hass.states[eid], R = this._climRows[eid]; if (!s || !R) return; const a = s.attributes, row = R.row;
+        if (R.pend == null) row.querySelector(".clset").textContent = a.temperature != null ? a.temperature + "°" : "—";
         const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "° " : "";
         const hum = a.current_humidity != null ? " · 💧" + a.current_humidity + "%" : "";
         row.querySelector(".clst").textContent = cur + "· " + (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state) + hum;
@@ -2935,7 +2956,6 @@ class JmaEnergyCard extends HTMLElement {
         <div class="spark" id="espk" style="height:48px;"></div>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
-    if (this._config.compact) ["espk", "ecap"].forEach((id) => { const e = this.shadowRoot.getElementById(id); if (e) e.style.display = "none"; });
   }
   _openPopup() {
     if (this._popup) return;
@@ -2967,7 +2987,7 @@ class JmaEnergyCard extends HTMLElement {
     const win = this._config.spark_hours || 12;
     const ew = this.shadowRoot.getElementById("ewin");
     if (ew) ew.textContent = win >= 24 ? "sur " + Math.round(win / 24) + " j" : "sur " + win + " h";
-    if (!this._config.compact && (this._config.production_entity || this._config.grid_entity) && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
+    if ((this._config.production_entity || this._config.grid_entity) && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
       this._sparkAt = Date.now();
       jmaSparklineMulti(this.shadowRoot.getElementById("espk"), this._hass, [
         { entity: this._config.production_entity, color: this._config.color, fill: true },
