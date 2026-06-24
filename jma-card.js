@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.41.0";
+const VERSION = "0.42.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3674,7 +3674,15 @@ class JmaScreensaverCard extends HTMLElement {
   getCardSize() { return 1; }
   static getStubConfig() { return { timeout: 3, weather_entity: "weather.maison" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); if (!this._wakeSub && h && h.connection) this._subscribeWake(); }
+  _subscribeWake() {
+    this._wakeSub = true;
+    // une notification (persistante) ou l'event jma_screensaver_wake ferme la veille
+    try { this._hass.connection.subscribeEvents(() => { if (this._shown) this._hide(); }, "jma_screensaver_wake"); } catch (e) {}
+    if (this._config.wake_on_notify !== false) {
+      try { this._hass.connection.subscribeEvents(() => { if (this._shown) this._hide(); }, "persistent_notifications_updated"); } catch (e) {}
+    }
+  }
   connectedCallback() { this._arm(); }
   disconnectedCallback() { this._disarm(); this._hide(); }
   _build() {
