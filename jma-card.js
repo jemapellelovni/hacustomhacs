@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.11.1";
+const VERSION = "0.11.2";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -384,6 +384,9 @@ class JmaCoverCard extends JmaBase {
            </div></div>
        </div></div></ha-card>`;
     this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
+    const openP = (e) => { e.stopPropagation(); this._openPopup(); };
+    this.shadowRoot.querySelector(".badge").addEventListener("click", openP);
+    this.shadowRoot.querySelector(".meta").addEventListener("click", openP);
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
       b.addEventListener("click", (e) => { e.stopPropagation(); this._call("cover", b.dataset.a, { entity_id: this._config.entity }); })
     );
@@ -1422,9 +1425,18 @@ class JmaPopup extends HTMLElement {
     body.appendChild(row);
   }
   _coverBody(body) {
-    const s = this._s;
-    body.appendChild(this._slider("pos", "Position", s.attributes.current_position ?? 0, (x) => x + " %",
+    const s = this._s, a = s.attributes, feat = a.supported_features || 0;
+    const stateFR = { open: "Ouvert", closed: "Fermé", opening: "Ouverture…", closing: "Fermeture…" }[s.state] || s.state;
+    const cells = [["État", stateFR]];
+    if (a.current_position != null) cells.push(["Position", a.current_position + " %"]);
+    if (a.current_tilt_position != null) cells.push(["Inclinaison", a.current_tilt_position + " %"]);
+    const head = document.createElement("div"); head.className = "row kv";
+    head.innerHTML = cells.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    body.appendChild(head);
+    if (feat & 4) body.appendChild(this._slider("pos", "Position", a.current_position ?? 0, (x) => x + " %",
       (x) => this._call("cover", "set_cover_position", { entity_id: this._config.entity, position: x })));
+    if (feat & 128) body.appendChild(this._slider("tilt", "Inclinaison", a.current_tilt_position ?? 0, (x) => x + " %",
+      (x) => this._call("cover", "set_cover_tilt_position", { entity_id: this._config.entity, tilt_position: x })));
     const row = document.createElement("div");
     row.className = "row btns";
     row.innerHTML = `
@@ -1739,10 +1751,10 @@ class JmaPresenceCard extends HTMLElement {
         ? `<span class="bb${charging ? " chg" : bat <= 20 ? " low" : ""}"><ha-icon icon="${jmaBatIcon(bat, charging)}"></ha-icon>${bat}</span>`
         : "";
       const el = document.createElement("div"); el.className = "p " + (home ? "home" : "away");
+      el.title = name + " · " + zone + " · " + dur;
       el.innerHTML = `<div class="av" style="${pic ? `background-image:url('${pic}')` : ""}">${pic ? "" : name.slice(0, 1).toUpperCase()}` +
         batBadge +
-        `<span class="b2"><ha-icon icon="${home ? "mdi:check" : "mdi:home-export-outline"}"></ha-icon></span></div>` +
-        `<div class="pn">${name}</div><div class="ps">${zone} · ${dur}</div>`;
+        `<span class="b2"><ha-icon icon="${home ? "mdi:check" : "mdi:home-export-outline"}"></ha-icon></span></div>`;
       el.addEventListener("click", () => this._openPopup({ ...der, name }));
       ppl.appendChild(el);
     });
