@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.28.0";
+const VERSION = "0.29.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -227,17 +227,28 @@ async function jmaSparklineMulti(host, hass, series, hours) {
       return { ...s, pts };
     }).filter((l) => l.pts.length > 1);
     if (!lines.length) { host.innerHTML = ""; return; }
-    let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
-    lines.forEach((l) => l.pts.forEach((p) => { tMin = Math.min(tMin, p.t); tMax = Math.max(tMax, p.t); vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v); }));
-    if (vMin === vMax) { vMin -= 1; vMax += 1; }
-    const W = 200, H = 34, pad = 3;
-    const sx = (t) => pad + ((t - tMin) / (tMax - tMin || 1)) * (W - 2 * pad);
+    let tMin = Infinity, tMax = -Infinity;
+    lines.forEach((l) => l.pts.forEach((p) => { tMin = Math.min(tMin, p.t); tMax = Math.max(tMax, p.t); }));
+    // lissage : moyenne par tranche de temps (sinon courbes de puissance illisibles)
+    const N = 64, span = (tMax - tMin) || 1;
+    lines.forEach((l) => {
+      const buckets = Array.from({ length: N }, () => ({ s: 0, n: 0 }));
+      l.pts.forEach((p) => { const b = Math.min(N - 1, Math.floor(((p.t - tMin) / span) * N)); buckets[b].s += p.v; buckets[b].n++; });
+      const out = []; let last = l.pts[0].v;
+      for (let i = 0; i < N; i++) { if (buckets[i].n) last = buckets[i].s / buckets[i].n; out.push({ t: tMin + ((i + 0.5) / N) * span, v: last }); }
+      l.spts = out;
+    });
+    let vMin = Infinity, vMax = -Infinity;
+    lines.forEach((l) => l.spts.forEach((p) => { vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v); }));
+    vMin = Math.min(vMin, 0); if (vMin === vMax) { vMin -= 1; vMax += 1; }
+    const W = 320, H = 48, pad = 3;
+    const sx = (t) => pad + ((t - tMin) / span) * (W - 2 * pad);
     const sy = (v) => H - pad - ((v - vMin) / (vMax - vMin || 1)) * (H - 2 * pad);
     let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
     lines.forEach((l) => {
-      const d = l.pts.map((p, i) => (i ? "L" : "M") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1)).join(" ");
-      if (l.fill) svg += `<path d="${d} L ${sx(l.pts[l.pts.length - 1].t).toFixed(1)} ${H - pad} L ${sx(l.pts[0].t).toFixed(1)} ${H - pad} Z" fill="${l.color}" opacity=".14"/>`;
-      svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      const d = l.spts.map((p, i) => (i ? "L" : "M") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1)).join(" ");
+      if (l.fill) svg += `<path d="${d} L ${sx(l.spts[l.spts.length - 1].t).toFixed(1)} ${H - pad} L ${sx(l.spts[0].t).toFixed(1)} ${H - pad} Z" fill="${l.color}" opacity=".16"/>`;
+      svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="${l.fill ? 2 : 1.6}" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
     });
     svg += `</svg>`;
     host.innerHTML = svg;
@@ -2646,7 +2657,7 @@ class JmaEnergyCard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
   setConfig(c) {
     if (!c.production_entity && !c.grid_entity) throw new Error("énergie : production_entity et/ou grid_entity requis");
-    this._config = { color: ROSE, accent: BEIGE, dark: DARK, grid_color: "#3b9bff", title: "Énergie", ...c };
+    this._config = { color: ROSE, accent: BEIGE, dark: DARK, grid_color: "#3b9bff", title: "Énergie", spark_hours: 12, ...c };
   }
   getCardSize() { return 2; }
   static getStubConfig() { return { title: "Énergie", production_entity: "sensor.solar_power", grid_entity: "sensor.grid_power" }; }
@@ -2663,6 +2674,7 @@ class JmaEnergyCard extends HTMLElement {
         .leg{display:flex;justify-content:space-between;font-size:.72rem;opacity:.9;}
         .leg b{font-weight:800;}
         .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+        .ecap{display:flex;justify-content:space-between;font-size:.64rem;font-weight:600;opacity:.55;margin-top:2px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
         <div class="top"><div class="badge"><ha-icon id="ic" icon="mdi:flash"></ha-icon></div>
@@ -2673,7 +2685,8 @@ class JmaEnergyCard extends HTMLElement {
           <span><span class="dot" style="background:var(--jma-rose)"></span>Solaire <b id="sol">—</b></span>
           <span><span class="dot" style="background:var(--edf)"></span>EDF <b id="grd">—</b></span>
         </div>
-        <div class="spark" id="espk" style="height:30px;"></div>
+        <div class="ecap"><span>Puissance</span><span id="ewin"></span></div>
+        <div class="spark" id="espk" style="height:48px;"></div>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
   }
@@ -2703,12 +2716,15 @@ class JmaEnergyCard extends HTMLElement {
     ic.setAttribute("icon", solarDom ? "mdi:solar-power" : "mdi:transmission-tower");
     ic.style.color = accent;
     this.shadowRoot.querySelector(".badge").style.background = accent + "33";
+    const win = this._config.spark_hours || 12;
+    const ew = this.shadowRoot.getElementById("ewin");
+    if (ew) ew.textContent = win >= 24 ? "sur " + Math.round(win / 24) + " j" : "sur " + win + " h";
     if ((this._config.production_entity || this._config.grid_entity) && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
       this._sparkAt = Date.now();
       jmaSparklineMulti(this.shadowRoot.getElementById("espk"), this._hass, [
         { entity: this._config.production_entity, color: this._config.color, fill: true },
         { entity: this._config.grid_entity, color: this._config.grid_color },
-      ], 24);
+      ], win);
     }
   }
 }
