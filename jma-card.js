@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.12.1";
+const VERSION = "0.13.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -911,12 +911,18 @@ class JmaPopup extends HTMLElement {
   connectedCallback() {
     this._build();
     requestAnimationFrame(() => this.shadowRoot.getElementById("wrap").classList.add("show"));
+    this._onKey = (e) => { if (e.key === "Escape") this._close(); };
+    document.addEventListener("keydown", this._onKey);
   }
+  disconnectedCallback() { if (this._onKey) document.removeEventListener("keydown", this._onKey); clearInterval(this._camTimer); }
   get _s() { return this._hass && this._config.entity ? this._hass.states[this._config.entity] : undefined; }
   _domain() { return (this._config.entity || "x.x").split(".")[0]; }
   _kind() { return this._config.kind || this._domain(); }
   _close() {
+    if (this._closing) return;
+    this._closing = true;
     clearInterval(this._camTimer);
+    if (this._onKey) document.removeEventListener("keydown", this._onKey);
     const w = this.shadowRoot.getElementById("wrap");
     w.classList.remove("show");
     setTimeout(() => { this.dispatchEvent(new CustomEvent("jma-close")); this.remove(); }, 260);
@@ -989,6 +995,9 @@ class JmaPopup extends HTMLElement {
           border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:4px 8px;font-size:.68rem;font-weight:700;
           white-space:nowrap;pointer-events:none;display:none;z-index:4;}
         .gmsg{opacity:.45;font-size:.74rem;padding-top:34px;text-align:center;}
+        .granges{display:flex;gap:5px;}
+        .gr{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:7px;border:none;cursor:pointer;background:rgba(255,255,255,.1);color:#fff;}
+        .gr.on{background:var(--jma-rose);color:var(--jma-dark);}
       </style>
       <div class="back" id="wrap">
         <div class="sheet" id="sheet">
@@ -1002,8 +1011,16 @@ class JmaPopup extends HTMLElement {
         </div>
       </div>`;
     const wrap = this.shadowRoot.getElementById("wrap");
-    wrap.addEventListener("click", (e) => { if (e.target === wrap) this._close(); });
-    this.shadowRoot.getElementById("x").addEventListener("click", () => this._close());
+    // fermeture sur le fond UNIQUEMENT si le geste a démarré sur le fond et après un délai
+    // de garde (évite la fermeture immédiate par le "click" de synthèse tactile à l'ouverture)
+    this._openedAt = Date.now();
+    let downOnBack = false;
+    wrap.addEventListener("pointerdown", (e) => { downOnBack = e.target === wrap; });
+    wrap.addEventListener("click", (e) => {
+      if (e.target === wrap && downOnBack && Date.now() - this._openedAt > 350) this._close();
+      downOnBack = false;
+    });
+    this.shadowRoot.getElementById("x").addEventListener("click", (e) => { e.stopPropagation(); this._close(); });
     this._built = true;
     this._renderBody();
     this._refresh();
@@ -1074,8 +1091,15 @@ class JmaPopup extends HTMLElement {
     entities = (entities || []).filter(Boolean);
     if (!entities.length || !this._hass) return;
     hours = hours || 24;
-    host.innerHTML = `<div class="lbl"><span>Historique ${hours} h</span><b id="gv"></b></div>` +
+    host.innerHTML = `<div class="lbl"><span class="granges"></span><b id="gv"></b></div>` +
       `<div class="gw" id="gw"><div class="gmsg">chargement…</div><div class="gline"></div><div class="gmark"></div><div class="gtip"></div></div>`;
+    const gr = host.querySelector(".granges");
+    [[24, "24h"], [48, "48h"], [168, "7j"]].forEach(([h, lbl]) => {
+      const b = document.createElement("button");
+      b.className = "gr" + (h === hours ? " on" : ""); b.textContent = lbl;
+      b.addEventListener("click", () => this._graph(host, entities, h));
+      gr.appendChild(b);
+    });
     const gw = host.querySelector("#gw");
     const setMsg = (m) => { const e = gw.querySelector(".gmsg"); if (e) e.textContent = m; };
     try {

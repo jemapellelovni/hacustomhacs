@@ -1,84 +1,92 @@
 # 🎚️ JMA Cards
 
-Set de cartes Lovelace **flat / iOS**, vanilla JS (**zéro build, zéro dépendance**, un seul fichier),
-avec un **slider horizontal** (barre à glisser distincte, façon app Maison iOS).
+Un **set de cartes Lovelace** pour Home Assistant, design **flat / iOS**, en **vanilla JS**
+(zéro build, zéro dépendance, un seul fichier). Clic = pop-up de contrôle riche · appui long = fiche HA.
 
 > Palette par défaut : rose `#f8a5c2` · beige `#DEC198` · fond `#0a0a0b` · texte blanc.
 
-## 🧩 Cartes du set
-| Type | Pour | Contrôles |
-|------|------|-----------|
+## 🧩 Les cartes
+
+| Type | Pour | Aperçu |
+|------|------|--------|
 | `custom:jma-card` | tout (auto) | slider horizontal + pop-up |
-| `custom:jma-light-card` | lumière | slider luminosité, tap = on/off |
+| `custom:jma-light-card` | lumière | slider luminosité, teinte couleur réelle |
 | `custom:jma-switch-card` | interrupteur | pastille on/off iOS |
-| `custom:jma-cover-card` | volet | Ouvrir / Stop / Fermer + position |
-| `custom:jma-thermostat-card` | climat | consigne ± + modes |
-| `custom:jma-media-card` | média | transport + volume |
-| `custom:jma-vacuum-card` | aspirateur | Start / Pause / Dock |
-| `custom:jma-scene-card` | scène / script | bouton d'activation |
-| `custom:jma-alarm-card` | alarme | Désarmer / Maison / Absent |
+| `custom:jma-cover-card` | volet | Ouvrir/Stop/Fermer compacts + position |
+| `custom:jma-thermostat-card` | climat | consigne ± (modes & graphe dans le pop-up) |
+| `custom:jma-media-card` | média | transport + volume + pochette |
+| `custom:jma-vacuum-card` | aspirateur | Start/Pause/Dock + batterie |
+| `custom:jma-scene-card` | scène/script | activation + toast |
+| `custom:jma-alarm-card` | alarme | Désarmer/Maison/Absent/Nuit (adaptatif) |
+| `custom:jma-ev-card` | voiture élec. | batterie, autonomie, charge, **clim en cours** |
+| `custom:jma-energy-card` | énergie | conso/prod — **bleu EDF / rose solaire** |
+| `custom:jma-camera-card` | caméra | flux + présence/REC |
+| `custom:jma-presence-card` | présence | avatars présents/absents + batterie tél |
+| `custom:jma-bin-card` | poubelle | rappel par jour de la semaine |
+| `custom:jma-agenda-card` | agenda | événements calendrier (jours configurables) |
+| `custom:jma-notify-card` | notifications | persistantes + **toasts** par importance |
 
-> Commun à toutes : `name` · `icon` · `color` · `accent` · `hold_action` (`popup` \| `more-info` \| `none`).
-> Appui long = pop-up de contrôle détaillé.
+## ✨ Fonctions transverses
 
-## ✨ Fonctions
-- **Clic simple = pop-up** de contrôle (bottom-sheet iOS : sliders, couleurs, modes, transport…). **Appui long = fiche HA**.
-- **Contrôles inline** : slider horizontal, boutons (volet/média/aspirateur/alarme), pastille on/off (switch) — agissent directement sans ouvrir le pop-up.
-- **Éditeur visuel** : en mode édition du dashboard, clic sur la carte → formulaire natif (entité, nom, icône, couleurs, options).
-- **Toasts de notification** (`custom:jma-notify-card` + `window.jmaToast(...)`) : pop-ups iOS en haut de l'écran, et surfaçage des notifications persistantes HA.
-- **Compact** : tuiles basses, jamais trop grosses ; **responsive** (320px → desktop).
-- **États dynamiques** : teinte de la couleur réelle des lampes, pochette média en fond, « indisponible » estompé.
+- **Éditeur visuel** sur **toutes** les cartes (mode édition du dashboard → clic sur la carte) :
+  chaque entité utilisée est modifiable via les sélecteurs natifs HA.
+- **Pop-ups** par type (sliders, couleurs, modes FR, transport, boutons, raccourcis…),
+  **scrollables** (hauteur max 88 vh), fermables au **clic hors-cadre** ou **Échap**.
+- **Graphes intégrés** dans les pop-ups : tracés depuis l'API `history`, **interactifs**
+  (survol/toucher = valeur + heure), avec sélecteur de période **24h / 48h / 7j**.
+- **Toasts** (`window.jmaToast({title, message, level})`) avec niveaux d'importance :
+  `info` · `success` · `warning` · `danger` · `critical` (reste affiché + pulse).
+- **Compact & responsive** (320px → desktop), gestion des entités indisponibles.
 
-> `tap_action: popup` (défaut) · `more-info` · `none`
+> Communs à toutes : `name` · `icon` · `color` · `accent` · `tap_action` (`popup` | `more-info` | `none`).
 
-## 📦 Entités supportées
-`light` (luminosité) · `media_player` (volume) · `cover` (position) · `climate` (consigne) ·
-`switch` / `input_boolean` / `fan` (toggle) · `scene` / `script` (activation).
+## ⚙️ Exemples
 
-## ⚙️ Configuration
-| Option | Type | Défaut | Description |
-|--------|------|--------|-------------|
-| `entity` | string | **requis** | l'entité à piloter |
-| `name` | string | nom de l'entité | titre affiché |
-| `icon` | string | auto | icône mdi |
-| `slider` | string | `auto` | `auto` \| `brightness` \| `temperature` \| `volume` \| `position` \| `none` |
-| `color` | string | `#f8a5c2` | couleur d'accent (remplissage) |
-| `accent` | string | `#DEC198` | couleur secondaire (haut du dégradé) |
-
-## 🧩 Exemples
 ```yaml
-type: custom:jma-card
-entity: light.chambre
+type: custom:jma-light-card
+entity: light.salon
 
-# Slider de volume forcé
-type: custom:jma-card
-entity: media_player.sejour
-slider: volume
+type: custom:jma-cover-card
+entity: cover.volet_salon          # pop-up : slider + raccourcis 0→100 %
 
-# Volet (glisser = position)
-type: custom:jma-card
-entity: cover.volet_chambre_1
+type: custom:jma-thermostat-card
+entity: climate.salon
 
-# Sans slider (toggle pur), couleur custom
-type: custom:jma-card
-entity: switch.ok_salon
-slider: none
-color: "#DEC198"
+type: custom:jma-presence-card
+persons: [person.louis, person.alice]   # batterie/adresse auto-détectées
+
+type: custom:jma-energy-card
+title: Énergie
+production_entity: sensor.solaire        # W
+grid_entity: sensor.lixee_papp           # W soutirés (EDF)
+
+type: custom:jma-agenda-card
+title: Agenda
+entities: [calendar.famille]
+days: 7
+max: 6
+
+type: custom:jma-ev-card
+name: Zoé
+battery_entity: sensor.zoe_batterie
+range_entity: sensor.zoe_autonomie_de_la_batterie
+charging_entity: binary_sensor.zoe_en_charge
+climate_active_entity: binary_sensor.zoe_cvc
 ```
 
 ## 🚀 Installation
-### Via HACS (dépôt custom)
-1. HACS → ⋮ → *Dépôts personnalisés* → ajouter l'URL du dépôt, catégorie **Lovelace**.
-2. Installer **JMA Card**.
-3. La ressource est ajoutée automatiquement.
 
-### Manuelle
-1. Copier `jma-card.js` dans `config/www/`.
-2. Réglages → Tableaux de bord → ⋮ → *Ressources* → ajouter
-   `/local/jma-card.js` en **module**.
+### Via HACS (dépôt personnalisé)
+1. HACS → ⋮ → **Dépôts personnalisés** → ajouter l'URL du dépôt, catégorie **Lovelace**.
+2. Installer **JMA Cards** → la ressource est ajoutée automatiquement.
 
-## 🗺️ Roadmap (base v0.1.0)
-- [ ] Éditeur visuel (`getConfigElement`)
-- [ ] Slider horizontal optionnel
-- [ ] Double-tap / hold configurables
-- [ ] Mode « groupe » (plusieurs entités)
+### Manuelle / jsDelivr
+Réglages → Tableaux de bord → ⋮ → **Ressources** → ajouter en **module** :
+`https://cdn.jsdelivr.net/gh/jemapellelovni/hacustomhacs@main/jma-card.js`
+
+## 🎨 Personnalisation
+`color` (accent principal) et `accent` (couleur secondaire) acceptent n'importe quelle
+valeur CSS. La carte énergie ajoute `grid_color` (couleur du réseau EDF).
+
+---
+Vanilla JS · MIT · made with 🩷
