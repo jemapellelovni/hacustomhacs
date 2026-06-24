@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.62.0";
+const VERSION = "0.63.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1483,6 +1483,7 @@ class JmaPopup extends HTMLElement {
         /* tuiles volet (grille) */
         .crow{display:flex;gap:9px;margin:9px 0;}
         .crow .ctile{flex:1 1 0;min-width:0;}
+        @media(max-width:620px){.crow{flex-direction:column;}}
         .ctile{display:flex;flex-direction:column;gap:9px;background:var(--p-surf);border:1px solid var(--p-line);border-radius:16px;padding:10px 11px 11px;transition:border-color .3s;}
         .ctile.on{border-color:rgba(150,170,120,.42);}
         .chead{display:flex;align-items:center;gap:8px;}
@@ -4882,6 +4883,13 @@ class JmaNavCard extends HTMLElement {
       .navbtn:active{transform:scale(.92);}
       .navbtn.on{background:linear-gradient(135deg,#f3d9b8,#e8c89a);color:#42382a;box-shadow:0 3px 10px rgba(180,140,90,.3);}
       :host(.dark) .navbtn.on{background:var(--jma-grad);color:var(--jma-dark);}
+      @media(max-width:620px){
+        .navdock{max-width:calc(100vw - 16px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:1px;}
+        .navdock::-webkit-scrollbar{display:none;}
+        .navbtn{min-width:0;padding:9px 11px;gap:0;}
+        .navbtn span{display:none;}
+        .navbtn ha-icon{--mdc-icon-size:25px;}
+      }
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="navdock" id="dock"></div></ha-card>`;
     const dock = this.shadowRoot.getElementById("dock");
