@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.34.1";
+const VERSION = "0.35.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -2812,6 +2812,7 @@ class JmaEnergyCard extends HTMLElement {
     p.addEventListener("jma-close", () => { this._popup = null; });
     document.body.appendChild(p); this._popup = p;
   }
+  _fmtW(w) { w = Math.round(w); return w >= 1000 ? (w / 1000).toFixed(w >= 10000 ? 0 : 1).replace(".", ",") + " kW" : w + " W"; }
   _update() {
     const prod = Math.max(0, this._num("production_entity") || 0);
     const grid = Math.max(0, this._num("grid_entity") || 0);
@@ -2822,10 +2823,10 @@ class JmaEnergyCard extends HTMLElement {
     const sShare = Math.round((solarUsed / cons) * 100);
     this.shadowRoot.getElementById("bs").style.width = sShare + "%";
     this.shadowRoot.getElementById("bg").style.width = (100 - sShare) + "%";
-    this.shadowRoot.getElementById("pc").textContent = Math.round(cons) + " W";
-    this.shadowRoot.getElementById("sol").textContent = Math.round(prod) + " W";
-    this.shadowRoot.getElementById("grd").textContent = Math.round(grid) + " W";
-    this.shadowRoot.getElementById("sub").textContent = (solarDom ? "Solaire dominant" : "Réseau EDF dominant") + " · " + sShare + "% autoconso.";
+    this.shadowRoot.getElementById("pc").textContent = this._fmtW(cons);
+    this.shadowRoot.getElementById("sol").textContent = this._fmtW(prod);
+    this.shadowRoot.getElementById("grd").textContent = this._fmtW(grid);
+    this.shadowRoot.getElementById("sub").textContent = "En ce moment · " + (solarDom ? "solaire dominant" : "réseau EDF dominant");
     const ic = this.shadowRoot.getElementById("ic");
     ic.setAttribute("icon", solarDom ? "mdi:solar-power" : "mdi:transmission-tower");
     ic.style.color = accent;
@@ -3165,6 +3166,7 @@ const ED_LABELS = {
   grid_export_entity: "Revente du jour (kWh)", price: "Prix import (€/kWh)", export_price: "Prix revente (€/kWh)",
   columns: "Colonnes", alarm_entity: "Centrale d'alarme", cameras: "Caméras", sensors: "Capteurs porte/fenêtre",
   timeout: "Délai d'inactivité (min)", weather_entity: "Météo", show_date: "Afficher la date", map_entity: "Caméra carte (Roborock)",
+  grid_entity: "Réseau EDF (W)", agenda_entities: "Calendriers (veille)",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -3220,6 +3222,8 @@ function jmaEditorSchema(type) {
     ent("sensors", "binary_sensor", true), txt("color"), txt("accent")];
   if (t === "custom:jma-screensaver-card") return [
     num("timeout", 1, 120), ent("weather_entity", "weather"),
+    ent("production_entity", "sensor"), ent("consumption_entity", "sensor"), ent("grid_entity", "sensor"),
+    ent("agenda_entities", "calendar", true), num("days", 1, 31),
     { name: "show_date", selector: { boolean: {} } }, txt("color"), txt("accent")];
   if (t === "custom:jma-room-card") return [
     txt("name"), { name: "icon", selector: { icon: {} } },
@@ -3637,7 +3641,7 @@ jmaDef("jma-security-card", JmaSecurityCard);
 // =============================================================================
 class JmaScreensaverCard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._idle = 0; this._shift = 0; }
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, timeout: 3, show_date: true, ...c }; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, timeout: 3, show_date: true, days: 7, ...c }; this._cals = c.agenda_entities || c.calendars || []; }
   getCardSize() { return 1; }
   static getStubConfig() { return { timeout: 3, weather_entity: "weather.maison" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
@@ -3668,18 +3672,22 @@ class JmaScreensaverCard extends HTMLElement {
     if (this._shown) return; this._shown = true;
     const o = document.createElement("div");
     o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .6s ease;";
-    const clk = document.createElement("div"); clk.style.cssText = "text-align:center;transition:transform 2s ease;";
-    clk.innerHTML = `<div id="jct" style="font-weight:300;font-size:17vw;line-height:.95;letter-spacing:-2px;">--:--</div>` +
-      (this._config.show_date ? `<div id="jcd" style="font-size:3.2vw;opacity:.65;margin-top:1vh;text-transform:capitalize;"></div>` : "") +
-      `<div id="jcw" style="font-size:3.4vw;opacity:.85;margin-top:1.4vh;display:flex;gap:10px;align-items:center;justify-content:center;"></div>`;
-    o.appendChild(clk);
+    const col = document.createElement("div"); col.style.cssText = "text-align:center;transition:transform 2s ease;display:flex;flex-direction:column;align-items:center;gap:1.2vh;max-width:90vw;";
+    col.innerHTML = `<div id="jct" style="font-weight:300;font-size:14vw;line-height:.92;letter-spacing:-2px;">--:--</div>` +
+      (this._config.show_date ? `<div id="jcd" style="font-size:3vw;opacity:.62;text-transform:capitalize;">—</div>` : "") +
+      `<div id="jcw" style="font-size:3.2vw;opacity:.85;display:flex;gap:10px;align-items:center;justify-content:center;"></div>` +
+      `<div id="jce" style="font-size:3.4vw;font-weight:600;display:flex;gap:1vw;align-items:center;justify-content:center;margin-top:1vh;"></div>` +
+      `<div id="jca" style="font-size:2.4vw;opacity:.92;display:flex;flex-direction:column;gap:.7vh;margin-top:1.2vh;min-width:46vw;"></div>`;
+    o.appendChild(col);
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
-    document.body.appendChild(o); this._ovl = o; this._clkEl = clk;
+    document.body.appendChild(o); this._ovl = o; this._clkEl = col;
     if (window.requestAnimationFrame) requestAnimationFrame(() => { o.style.opacity = "1"; }); else o.style.opacity = "1";
     this._paint(); this._clk = setInterval(() => this._paint(), 1000);
     this._shiftTimer = setInterval(() => this._shiftClock(), 60000);
+    this._fetchAgenda(); this._agTimer = setInterval(() => this._fetchAgenda(), 300000);
   }
-  _shiftClock() { if (!this._clkEl) return; const x = ((this._shift) % 2 ? 1 : -1) * 6; const y = ((this._shift++) % 3 - 1) * 5; this._clkEl.style.transform = `translate(${x}vw,${y}vh)`; }
+  _shiftClock() { if (!this._clkEl) return; const x = ((this._shift) % 2 ? 1 : -1) * 4; const y = ((this._shift++) % 3 - 1) * 4; this._clkEl.style.transform = `translate(${x}vw,${y}vh)`; }
+  _wsv(k) { const e = this._config[k]; const s = e && this._hass && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
   _paint() {
     if (!this._ovl) return;
     const d = new Date(), hh = ("0" + d.getHours()).slice(-2), mm = ("0" + d.getMinutes()).slice(-2);
@@ -3687,8 +3695,38 @@ class JmaScreensaverCard extends HTMLElement {
     const cd = this._ovl.querySelector("#jcd"); if (cd) cd.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     const cw = this._ovl.querySelector("#jcw"); const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
     if (cw && w) { const t = w.attributes.temperature; cw.innerHTML = `<ha-icon icon="${(typeof WEATHER_ICON !== "undefined" && WEATHER_ICON[w.state]) || "mdi:weather-partly-cloudy"}"></ha-icon>${t != null ? Math.round(t) + "°" : ""}`; }
+    // solaire + conso en évidence
+    const ce = this._ovl.querySelector("#jce");
+    if (ce) {
+      const f = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " kW" : Math.round(v) + " W";
+      const prod = this._wsv("production_entity"); let conso = this._wsv("consumption_entity");
+      if (conso == null) { const g = this._wsv("grid_entity"); if (g != null) conso = Math.max(0, g) + Math.max(0, prod || 0); }
+      const parts = [];
+      if (prod != null) parts.push(`<span style="color:#f8a5c2;display:inline-flex;align-items:center;gap:.6vw"><ha-icon icon="mdi:solar-power" style="--mdc-icon-size:3.6vw"></ha-icon>${f(Math.max(0, prod))}</span>`);
+      if (conso != null) parts.push(`<span style="color:#7fb0ff;display:inline-flex;align-items:center;gap:.6vw"><ha-icon icon="mdi:flash" style="--mdc-icon-size:3.6vw"></ha-icon>${f(Math.max(0, conso))}</span>`);
+      ce.innerHTML = parts.join(`<span style="opacity:.35;margin:0 1.2vw">·</span>`);
+    }
   }
-  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); this._idle = 0; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
+  async _fetchAgenda() {
+    if (!this._cals.length || !this._hass) return;
+    const start = new Date(), end = new Date(); end.setDate(end.getDate() + (this._config.days || 7));
+    const iso = (d) => d.toISOString(); const evs = [];
+    try { for (const cal of this._cals) { const r = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(iso(start))}&end=${encodeURIComponent(iso(end))}`); (r || []).forEach((e) => evs.push(e)); } } catch (e) {}
+    const now = Date.now();
+    this._events = evs.map((e) => { const s = e.start && (e.start.dateTime || e.start.date); return { d: new Date(s), allday: !(e.start && e.start.dateTime), t: e.summary || e.message || "(sans titre)" }; })
+      .filter((x) => !isNaN(x.d) && x.d.getTime() > now - 3600000).sort((a, b) => a.d - b.d).slice(0, 5);
+    this._renderAgenda();
+  }
+  _renderAgenda() {
+    const ca = this._ovl && this._ovl.querySelector("#jca"); if (!ca) return;
+    if (!this._events || !this._events.length) { ca.innerHTML = ""; return; }
+    const dn = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+    ca.innerHTML = this._events.map((e) => {
+      const day = dn[e.d.getDay()] + " " + e.d.getDate(); const hm = e.allday ? "" : (" " + ("0" + e.d.getHours()).slice(-2) + ":" + ("0" + e.d.getMinutes()).slice(-2));
+      return `<div style="display:flex;gap:1.4vw;align-items:baseline;justify-content:center;"><span style="color:#f8a5c2;font-weight:700;white-space:nowrap;">${day}${hm}</span><span style="opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw;">${e.t}</span></div>`;
+    }).join("");
+  }
+  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); this._idle = 0; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
 jmaDef("jma-screensaver-card", JmaScreensaverCard);
 
