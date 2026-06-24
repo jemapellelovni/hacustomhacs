@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.16.0";
+const VERSION = "0.17.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1870,6 +1870,104 @@ class JmaCamerasCard extends HTMLElement {
 customElements.define("jma-cameras-card", JmaCamerasCard);
 
 // =============================================================================
+//  🔊 SONOS MULTI-ROOM — lecture du groupe + grouper/dégrouper + volume/pièce
+// =============================================================================
+class JmaSonosCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._sliders = {}; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Sonos", ...c }; this._spk = c.entities || []; }
+  getCardSize() { return 3; }
+  static getStubConfig() { return { name: "Sonos", entities: ["media_player.salon"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  _call(s, data) { this._hass.callService("media_player", s, data); }
+  _master() {
+    if (this._config.master && this._hass.states[this._config.master]) return this._config.master;
+    let best = null, score = -1;
+    this._spk.forEach((eid) => {
+      const s = this._hass.states[eid]; if (!s) return;
+      const n = (s.attributes.group_members || [eid]).length;
+      const sc = n * 10 + (s.state === "playing" ? 5 : s.state === "paused" ? 2 : 0);
+      if (sc > score) { score = sc; best = eid; }
+    });
+    return best || this._spk[0];
+  }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .transport{display:flex;justify-content:center;gap:16px;align-items:center;margin:2px 0;}
+        .tbtn{width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);
+          color:var(--jma-text);display:flex;align-items:center;justify-content:center;}
+        .tbtn.big{width:50px;height:50px;background:var(--jma-rose);color:var(--jma-dark);}
+        .tbtn ha-icon{--mdc-icon-size:22px;}
+        .rooms{display:flex;flex-direction:column;gap:7px;margin-top:4px;}
+        .room{display:flex;align-items:center;gap:8px;}
+        .lk{width:30px;height:30px;border-radius:9px;border:none;cursor:pointer;flex:none;background:var(--jma-surf3);
+          color:var(--jma-icon);display:flex;align-items:center;justify-content:center;}
+        .lk.on{background:var(--jma-rose);color:var(--jma-dark);} .lk ha-icon{--mdc-icon-size:17px;}
+        .lk.master{background:var(--jma-beige);color:var(--jma-dark);}
+        .rn{font-size:.74rem;font-weight:600;width:78px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .room .slider{flex:1;height:26px;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="art"></div><div class="content">
+        <div class="top"><div class="badge"><ha-icon class="ic" icon="mdi:speaker-multiple"></ha-icon></div>
+          <div class="meta"><div class="name" id="nm">${c.name}</div><div class="sub" id="sub"></div></div></div>
+        <div class="transport">
+          <button class="tbtn" data-a="media_previous_track"><ha-icon icon="mdi:skip-previous"></ha-icon></button>
+          <button class="tbtn big" data-a="media_play_pause"><ha-icon class="pp" icon="mdi:play"></ha-icon></button>
+          <button class="tbtn" data-a="media_next_track"><ha-icon icon="mdi:skip-next"></ha-icon></button>
+        </div>
+        <div class="rooms" id="rooms"></div>
+      </div></div></ha-card>`;
+    this.shadowRoot.querySelectorAll(".tbtn").forEach((b) =>
+      b.addEventListener("click", () => this._call(b.dataset.a, { entity_id: this._master() })));
+    const rooms = this.shadowRoot.getElementById("rooms");
+    this._spk.forEach((eid) => {
+      const row = document.createElement("div"); row.className = "room"; row.dataset.e = eid;
+      const lk = document.createElement("button"); lk.className = "lk"; lk.innerHTML = `<ha-icon icon="mdi:link-variant"></ha-icon>`;
+      lk.addEventListener("click", () => this._toggleJoin(eid));
+      const nm = document.createElement("div"); nm.className = "rn";
+      const sl = jmaSlider({ icon: "mdi:volume-high", fmt: (v) => v + "%", onCommit: (v) => this._call("volume_set", { entity_id: eid, volume_level: v / 100 }) });
+      this._sliders[eid] = sl;
+      row.append(lk, nm, sl); rooms.appendChild(row);
+    });
+  }
+  _toggleJoin(eid) {
+    const master = this._master();
+    if (eid === master) return;
+    const grp = (this._hass.states[master].attributes.group_members) || [master];
+    if (grp.includes(eid)) this._call("unjoin", { entity_id: eid });
+    else this._call("join", { entity_id: master, group_members: [eid] });
+  }
+  _update() {
+    const master = this._master();
+    const ms = this._hass.states[master]; if (!ms) return;
+    const a = ms.attributes;
+    const grp = a.group_members || [master];
+    const playing = ms.state === "playing";
+    this.shadowRoot.getElementById("sub").textContent = a.media_title ? a.media_title + (a.media_artist ? " — " + a.media_artist : "") : (ms.state === "playing" || ms.state === "paused" ? ms.state : "À l'arrêt");
+    this.shadowRoot.querySelector(".pp").setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
+    this.shadowRoot.getElementById("tile").classList.toggle("on", ["playing", "paused"].includes(ms.state));
+    const art = this.shadowRoot.querySelector(".art");
+    art.style.backgroundImage = a.entity_picture && ["playing", "paused"].includes(ms.state) ? `url("${a.entity_picture}")` : "";
+    this._spk.forEach((eid) => {
+      const s = this._hass.states[eid]; const row = this.shadowRoot.querySelector(`.room[data-e="${eid}"]`);
+      if (!row) return;
+      const sa = s ? s.attributes : {};
+      row.querySelector(".rn").textContent = (this._config.names && this._config.names[eid]) || (sa.friendly_name || eid);
+      const lk = row.querySelector(".lk");
+      const isMaster = eid === master, grouped = grp.includes(eid);
+      lk.classList.toggle("master", isMaster);
+      lk.classList.toggle("on", grouped && !isMaster);
+      lk.querySelector("ha-icon").setAttribute("icon", isMaster ? "mdi:crown" : grouped ? "mdi:link-variant" : "mdi:link-variant-off");
+      const sl = this._sliders[eid];
+      if (sa.volume_level != null) { sl.hidden = false; sl.setValue(Math.round(sa.volume_level * 100)); } else sl.hidden = true;
+    });
+  }
+}
+customElements.define("jma-sonos-card", JmaSonosCard);
+
+// =============================================================================
 //  🧑‍🤝‍🧑 PRÉSENCE (avatars)
 // =============================================================================
 class JmaPresenceCard extends HTMLElement {
@@ -2325,7 +2423,7 @@ const ED_LABELS = {
   geocode_entities: "Capteurs adresse (ordre des personnes)", distance_entities: "Capteurs distance (ordre des personnes)",
   entities: "Calendriers", days: "Jours", max: "Nb max d'événements", time: "Heure de sortie",
   show_forecast: "Afficher les prévisions", theme: "Thème", graph: "Mini-graphe", hours: "Période (h)",
-  columns: "Colonnes",
+  columns: "Colonnes", master: "Lecteur maître (option)",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -2344,6 +2442,8 @@ function jmaEditorSchema(type) {
     txt("name"), { name: "icon", selector: { icon: {} } }, ent("entities", null, true, true), txt("color"), txt("accent"), themeSel];
   if (t === "custom:jma-cameras-card") return [
     ent("entities", "camera", true, true), num("columns", 1, 4), txt("color"), txt("accent"), themeSel];
+  if (t === "custom:jma-sonos-card") return [
+    txt("name"), ent("entities", "media_player", true, true), ent("master", "media_player"), txt("color"), txt("accent"), themeSel];
 
   if (t === "custom:jma-ev-card") return [
     txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
@@ -2606,6 +2706,7 @@ REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jo
 REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
 REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
+REG("jma-sonos-card", "JMA Sonos", "Multi-room : groupes + volume par pièce.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
