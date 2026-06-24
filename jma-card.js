@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.23.0";
+const VERSION = "0.24.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -55,18 +55,21 @@ function jmaBatIcon(p, charging) {
 //  STYLE & HELPERS PARTAGÉS
 // =============================================================================
 const BASE_CSS = `
-  :host{--jma-blue:#5b9bff;
-    --jma-text:#33291c;--jma-icon:rgba(51,41,28,.72);
-    --jma-surf:rgba(255,251,243,.6);--jma-surf2:rgba(51,41,28,.09);--jma-surf3:rgba(51,41,28,.07);
-    --jma-track:rgba(51,41,28,.14);--jma-ripple:rgba(51,41,28,.12);
-    --jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose) 70%,var(--jma-beige));}
+  :host{--jma-blue:#6a9bea;
+    --jma-text:#42382a;--jma-icon:rgba(66,56,42,.55);
+    --jma-surf:rgba(255,253,249,.74);--jma-surf2:rgba(66,56,42,.06);--jma-surf3:rgba(66,56,42,.05);
+    --jma-track:rgba(66,56,42,.1);--jma-ripple:rgba(66,56,42,.08);
+    --jma-line:rgba(66,56,42,.07);--jma-shadow:0 1px 2px rgba(66,56,42,.04),0 6px 18px rgba(66,56,42,.06);
+    --jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose));}
   :host(.dark){--jma-text:#fff;--jma-icon:rgba(255,255,255,.8);--jma-surf:rgba(255,255,255,.06);
-    --jma-surf2:rgba(255,255,255,.12);--jma-surf3:rgba(255,255,255,.1);--jma-track:rgba(255,255,255,.16);--jma-ripple:rgba(255,255,255,.35);}
+    --jma-surf2:rgba(255,255,255,.12);--jma-surf3:rgba(255,255,255,.1);--jma-track:rgba(255,255,255,.16);--jma-ripple:rgba(255,255,255,.35);
+    --jma-line:rgba(255,255,255,.08);--jma-shadow:0 2px 8px rgba(0,0,0,.28);}
   .tile{position:relative;overflow:hidden;border-radius:18px;min-height:60px;height:100%;
     padding:11px;box-sizing:border-box;background:var(--jma-surf);
-    backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
+    border:1px solid var(--jma-line);box-shadow:var(--jma-shadow);
+    backdrop-filter:blur(18px) saturate(118%);-webkit-backdrop-filter:blur(18px) saturate(118%);
     color:var(--jma-text);user-select:none;display:flex;touch-action:pan-y;
-    transition:transform .22s cubic-bezier(.2,.7,.3,1),background .3s ease;}
+    transition:transform .22s cubic-bezier(.2,.7,.3,1),background .3s ease,box-shadow .3s ease;}
   .tile:not(.flat){cursor:pointer;}
   .tile:not(.flat):hover{transform:scale(1.02);}
   .tile.active{transform:scale(.985);}
@@ -90,7 +93,7 @@ const BASE_CSS = `
   .slider[hidden]{display:none;}
   .slider.precise{box-shadow:inset 0 0 0 2px var(--jma-blue);}
   .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;
-    background:linear-gradient(90deg,var(--jma-blue) 0%,var(--jma-rose) 60%,var(--jma-beige) 100%);
+    background:linear-gradient(90deg,var(--jma-blue) 0%,var(--jma-rose) 100%);
     transition:width .28s cubic-bezier(.2,.7,.3,1);}
   .slider.dragging .sfill{transition:none;}
   .sval{position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
@@ -111,7 +114,7 @@ const BASE_CSS = `
   .cbtn{flex:1 1 auto;min-width:46px;height:34px;border:none;border-radius:11px;cursor:pointer;
     background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;gap:5px;
     font-weight:600;font-size:.76rem;transition:background .2s,transform .08s;}
-  .cbtn:hover{background:rgba(248,165,194,.25);}
+  .cbtn:hover{background:rgba(248,165,194,.18);}
   .cbtn:active{transform:scale(.93);}
   .cbtn ha-icon{--mdc-icon-size:18px;}
   .cbtn.accent{background:var(--jma-grad);color:var(--jma-dark);}
@@ -1117,7 +1120,7 @@ class JmaPopup extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         :host{--jma-rose:${c.color || ROSE};--jma-beige:${c.accent || BEIGE};--jma-blue:${c.blue || BLUE};--jma-dark:${c.dark || DARK};
-          --jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose) 70%,var(--jma-beige));}
+          --jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose));}
         .back{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);
           backdrop-filter:blur(6px);opacity:0;transition:opacity .26s ease;display:flex;align-items:flex-end;justify-content:center;}
         .back.show{opacity:1;}
