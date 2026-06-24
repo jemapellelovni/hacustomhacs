@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.10.1";
+const VERSION = "0.10.2";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -994,6 +994,12 @@ class JmaPopup extends HTMLElement {
     this._refresh();
   }
   _refresh() {
+    if (this._kind() === "agenda") {
+      this.shadowRoot.getElementById("ht").textContent = this._config.title || "Agenda";
+      this.shadowRoot.getElementById("hs").textContent = (this._config.days || 7) + " prochains jours";
+      this.shadowRoot.getElementById("hi").setAttribute("icon", "mdi:calendar-month");
+      return;
+    }
     if (this._kind() === "ev" || this._kind() === "energy") {
       const ev = this._kind() === "ev";
       this.shadowRoot.getElementById("ht").textContent = ev ? (this._config.name || "Voiture") : (this._config.title || "Énergie");
@@ -1037,6 +1043,7 @@ class JmaPopup extends HTMLElement {
     body.innerHTML = ""; this._graphs = [];
     if (this._kind() === "ev") return this._evBody(body);
     if (this._kind() === "energy") return this._energyBody(body);
+    if (this._kind() === "agenda") return this._agendaBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -1049,15 +1056,50 @@ class JmaPopup extends HTMLElement {
     return this._toggleBody(body);
   }
   async _graph(host, entities, hours) {
+    entities = (entities || []).filter(Boolean);
+    if (!entities.length || !this._hass) return;
+    hours = hours || 24;
+    host.innerHTML = `<div class="lbl"><span>Historique ${hours} h</span><b id="gv"></b></div><div id="gw" style="position:relative;height:88px;"></div>`;
+    const gw = host.querySelector("#gw");
+    gw.innerHTML = `<div style="opacity:.45;font-size:.74rem;padding-top:32px;">chargement…</div>`;
     try {
-      entities = (entities || []).filter(Boolean);
-      if (!window.loadCardHelpers || !entities.length) return;
-      const helpers = await window.loadCardHelpers();
-      const el = helpers.createCardElement({ type: "history-graph", entities, hours_to_show: hours || 24, show_names: entities.length > 1 });
-      el.hass = this._hass; el.classList.add("graph");
-      host.appendChild(el);
-      (this._graphs = this._graphs || []).push(el);
-    } catch (e) {}
+      const end = new Date(), start = new Date(Date.now() - hours * 3600000);
+      const path = `history/period/${start.toISOString()}?end_time=${encodeURIComponent(end.toISOString())}` +
+        `&filter_entity_id=${entities.join(",")}&minimal_response&significant_changes_only`;
+      const res = await this._hass.callApi("GET", path);
+      const series = {};
+      (res || []).forEach((arr) => { if (arr && arr.length) series[arr[0].entity_id] = arr; });
+      const colors = [this._config.color || ROSE, this._config.grid_color || "#3b9bff", "#69f0ae"];
+      const lines = entities.map((eid, i) => {
+        const arr = series[eid] || [];
+        const pts = arr.map((p) => ({ t: new Date(p.last_changed || p.lc || p.lu).getTime(), v: parseFloat(p.state) }))
+          .filter((p) => !isNaN(p.v) && !isNaN(p.t));
+        return { eid, pts, color: colors[i % colors.length] };
+      }).filter((l) => l.pts.length > 1);
+      if (!lines.length) { gw.innerHTML = `<div style="opacity:.5;font-size:.74rem;padding-top:32px;">Pas d'historique numérique</div>`; return; }
+      let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+      lines.forEach((l) => l.pts.forEach((p) => { tMin = Math.min(tMin, p.t); tMax = Math.max(tMax, p.t); vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v); }));
+      if (vMin === vMax) { vMin -= 1; vMax += 1; }
+      const W = 320, H = 88, pad = 5;
+      const sx = (t) => pad + ((t - tMin) / (tMax - tMin || 1)) * (W - 2 * pad);
+      const sy = (v) => H - pad - ((v - vMin) / (vMax - vMin || 1)) * (H - 2 * pad);
+      let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">`;
+      lines.forEach((l, idx) => {
+        const d = l.pts.map((p, i) => (i ? "L" : "M") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1)).join(" ");
+        if (idx === 0) svg += `<path d="${d} L ${sx(l.pts[l.pts.length - 1].t).toFixed(1)} ${H - pad} L ${sx(l.pts[0].t).toFixed(1)} ${H - pad} Z" fill="${l.color}" opacity=".12"/>`;
+        svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      });
+      svg += `</svg>`;
+      gw.innerHTML = svg;
+      const last = lines[0].pts[lines[0].pts.length - 1].v;
+      const gv = host.querySelector("#gv"); if (gv) gv.textContent = (Math.round(last * 10) / 10) + "";
+      const lab = document.createElement("div");
+      lab.style.cssText = "display:flex;justify-content:space-between;font-size:.64rem;opacity:.5;margin-top:2px;";
+      lab.innerHTML = `<span>min ${Math.round(vMin)}</span><span>max ${Math.round(vMax)}</span>`;
+      host.appendChild(lab);
+    } catch (e) {
+      gw.innerHTML = `<div style="opacity:.5;font-size:.74rem;padding-top:32px;">Historique indisponible</div>`;
+    }
   }
   _evState() {
     const ch = this._config.charging_entity && this._hass.states[this._config.charging_entity];
@@ -1232,6 +1274,32 @@ class JmaPopup extends HTMLElement {
     if (row.childElementCount) body.appendChild(row);
     const gh = document.createElement("div"); gh.className = "row"; body.appendChild(gh);
     this._graph(gh, [this._config.battery_entity, this._config.range_entity], 48);
+  }
+  async _agendaBody(body) {
+    const cals = this._config.entities || (this._config.entity ? [this._config.entity] : []);
+    const days = this._config.days || 7;
+    body.innerHTML = `<div id="alist" style="font-size:.85rem;opacity:.6;">chargement…</div>`;
+    const list = body.querySelector("#alist");
+    try {
+      const start = new Date(), end = new Date(Date.now() + days * 86400000);
+      let evs = [];
+      for (const cal of cals) {
+        const r = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+        (r || []).forEach((e) => evs.push(e));
+      }
+      evs = evs.map((e) => { const s = e.start && (e.start.dateTime || e.start.date); return { d: new Date(s), allday: !(e.start && e.start.dateTime), e }; })
+        .filter((x) => !isNaN(x.d)).sort((a, b) => a.d - b.d);
+      if (!evs.length) { list.innerHTML = `<div style="opacity:.55;">Rien de prévu 🎉</div>`; return; }
+      const dn = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+      let html = "", last = "";
+      evs.forEach(({ d, allday, e }) => {
+        const dk = d.toDateString();
+        if (dk !== last) { last = dk; html += `<div style="font-weight:800;font-size:.72rem;opacity:.55;margin:11px 0 4px;text-transform:capitalize;">${dn[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}</div>`; }
+        const tt = allday ? "journée" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
+        html += `<div style="display:flex;gap:10px;align-items:baseline;padding:7px 9px;background:rgba(255,255,255,.06);border-radius:10px;margin-bottom:4px;"><b style="color:var(--jma-rose);min-width:50px;font-size:.78rem;">${tt}</b><span style="font-size:.85rem;font-weight:600;">${e.summary || e.message || "(sans titre)"}</span></div>`;
+      });
+      list.innerHTML = html;
+    } catch (err) { list.innerHTML = `<div style="opacity:.55;">Agenda indisponible</div>`; }
   }
   _energyBody(body) {
     const num = (k) => { const e = this._config[k]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; };
@@ -1645,8 +1713,16 @@ class JmaAgendaCard extends HTMLElement {
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, days: 7, max: 6, title: "Agenda", ...c }; this._cals = c.entities || (c.entity ? [c.entity] : []); }
   getCardSize() { return 2; }
   static getStubConfig() { return { title: "Agenda", days: 7, max: 6, entities: ["calendar.example"] }; }
-  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } if (first || this._stale()) this._fetch(); }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } if (first || this._stale()) this._fetch(); if (this._popup) this._popup.hass = h; }
   _stale() { return !this._last || Date.now() - this._last > 180000; }
+  _openPopup() {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { ...this._config, kind: "agenda", entities: this._cals };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
@@ -1665,6 +1741,8 @@ class JmaAgendaCard extends HTMLElement {
           <div class="meta"><div class="name">${c.title}</div><div class="sub" id="sub"></div></div></div>
         <div id="list"></div>
       </div></div></ha-card>`;
+    this.shadowRoot.querySelector(".tile").style.cursor = "pointer";
+    this.shadowRoot.querySelector(".tile").addEventListener("click", () => this._openPopup());
   }
   async _fetch() {
     if (this._loading || !this._cals.length) return;
