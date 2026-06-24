@@ -15,9 +15,10 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.21.1";
+const VERSION = "0.22.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
+const BLUE = "#5b9bff";
 const DARK = "#0a0a0b";
 
 // Traductions FR
@@ -54,9 +55,9 @@ function jmaBatIcon(p, charging) {
 //  STYLE & HELPERS PARTAGÉS
 // =============================================================================
 const BASE_CSS = `
-  :host{--jma-text:#fff;--jma-icon:rgba(255,255,255,.8);--jma-surf:rgba(255,255,255,.06);
+  :host{--jma-blue:#5b9bff;--jma-text:#fff;--jma-icon:rgba(255,255,255,.8);--jma-surf:rgba(255,255,255,.06);
     --jma-surf2:rgba(255,255,255,.12);--jma-surf3:rgba(255,255,255,.1);--jma-track:rgba(255,255,255,.16);
-    --jma-ripple:rgba(255,255,255,.35);}
+    --jma-ripple:rgba(255,255,255,.35);--jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose) 70%,var(--jma-beige));}
   :host(.light){--jma-text:#15161a;--jma-icon:rgba(20,22,26,.7);--jma-surf:rgba(0,0,0,.045);
     --jma-surf2:rgba(0,0,0,.07);--jma-surf3:rgba(0,0,0,.06);--jma-track:rgba(0,0,0,.12);--jma-ripple:rgba(0,0,0,.14);}
   .tile{position:relative;overflow:hidden;border-radius:18px;min-height:60px;height:100%;
@@ -78,15 +79,16 @@ const BASE_CSS = `
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sub{font-size:clamp(.66rem,1.7vw,.76rem);opacity:.62;margin-top:1px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tile.on .badge{background:var(--jma-rose);}
+  .tile.on .badge{background:var(--jma-grad);}
   .tile.on .badge ha-icon{color:var(--jma-dark);}
 
   /* slider horizontal */
   .slider{position:relative;height:30px;border-radius:11px;overflow:hidden;flex:none;
-    background:var(--jma-track);touch-action:none;cursor:pointer;}
+    background:var(--jma-track);touch-action:none;cursor:pointer;transition:box-shadow .15s;}
   .slider[hidden]{display:none;}
+  .slider.precise{box-shadow:inset 0 0 0 2px var(--jma-blue);}
   .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;
-    background:linear-gradient(90deg,var(--jma-beige) 0%,var(--jma-rose) 100%);
+    background:linear-gradient(90deg,var(--jma-blue) 0%,var(--jma-rose) 60%,var(--jma-beige) 100%);
     transition:width .28s cubic-bezier(.2,.7,.3,1);}
   .slider.dragging .sfill{transition:none;}
   .sval{position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
@@ -99,7 +101,7 @@ const BASE_CSS = `
     position:relative;transition:background .3s ease;cursor:pointer;}
   .pill .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;
     box-shadow:0 2px 6px rgba(0,0,0,.35);transition:left .26s cubic-bezier(.2,.8,.2,1);}
-  .tile.on .pill{background:var(--jma-rose);}
+  .tile.on .pill{background:var(--jma-grad);}
   .tile.on .pill .knob{left:23px;}
 
   /* boutons de contrôle */
@@ -110,7 +112,7 @@ const BASE_CSS = `
   .cbtn:hover{background:rgba(248,165,194,.25);}
   .cbtn:active{transform:scale(.93);}
   .cbtn ha-icon{--mdc-icon-size:18px;}
-  .cbtn.accent{background:var(--jma-rose);color:var(--jma-dark);}
+  .cbtn.accent{background:var(--jma-grad);color:var(--jma-dark);}
 
   /* stepper thermostat */
   .therm{display:flex;align-items:center;justify-content:space-between;gap:8px;}
@@ -124,7 +126,7 @@ const BASE_CSS = `
   .chips{display:flex;gap:5px;flex-wrap:wrap;}
   .chip{padding:4px 8px;border-radius:9px;background:var(--jma-surf3);font-size:.68rem;cursor:pointer;
     border:none;color:var(--jma-text);text-transform:capitalize;transition:background .2s;}
-  .chip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
+  .chip.on{background:var(--jma-grad);color:var(--jma-dark);font-weight:700;}
 
   /* ripple */
   .tile::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
@@ -192,37 +194,46 @@ function jmaSlider({ fmt, onCommit, onInput, icon }) {
     (icon ? `<ha-icon class="sicon" icon="${icon}"></ha-icon>` : "");
   const fill = el.querySelector(".sfill");
   const val = el.querySelector(".sval");
-  let pending = null;
+  let pending = null, anchorX = 0, anchorV = 0, startY = 0;
   el.dragging = false;
   const valFromX = (e) => {
     const r = el.getBoundingClientRect();
-    return Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / r.width) * 100)));
+    return Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100));
   };
   const paint = (v) => {
     fill.style.width = v + "%";
-    val.textContent = fmt ? fmt(v) : v + "%";
+    val.textContent = fmt ? fmt(Math.round(v)) : Math.round(v) + "%";
+  };
+  // sensibilité réduite quand le doigt s'éloigne verticalement (mode précision iOS)
+  const sens = (e) => {
+    const vd = Math.abs(e.clientY - startY);
+    return vd < 24 ? 1 : Math.max(0.06, 1 - (vd - 24) / 200);
   };
   el.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
     el.dragging = true;
     el.classList.add("dragging");
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
-    pending = valFromX(e);
+    startY = e.clientY; anchorX = e.clientX;
+    pending = valFromX(e); anchorV = pending;   // saut absolu à l'endroit touché
     paint(pending);
-    if (onInput) onInput(pending);
+    if (onInput) onInput(Math.round(pending));
   });
   el.addEventListener("pointermove", (e) => {
     if (!el.dragging) return;
-    pending = valFromX(e);
+    const r = el.getBoundingClientRect();
+    const dx = e.clientX - anchorX;
+    pending = Math.max(0, Math.min(100, anchorV + (dx / r.width) * 100 * sens(e)));
+    el.classList.toggle("precise", Math.abs(e.clientY - startY) >= 24);
     paint(pending);
-    if (onInput) onInput(pending);
+    if (onInput) onInput(Math.round(pending));
   });
   const end = (e) => {
     if (e) e.stopPropagation();
     if (!el.dragging) return;
     el.dragging = false;
-    el.classList.remove("dragging");
-    if (pending != null) onCommit(pending);
+    el.classList.remove("dragging", "precise");
+    if (pending != null) onCommit(Math.round(pending));
     pending = null;
   };
   el.addEventListener("pointerup", end);
@@ -261,7 +272,7 @@ class JmaBase extends HTMLElement {
   _call(d, s, data) { if (this._hass) this._hass.callService(d, s, data); }
   _styleBlock(extra) {
     const c = this._config;
-    return `<style>:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}${BASE_CSS}${extra || ""}</style>`;
+    return `<style>:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-blue:${c.blue || BLUE};--jma-dark:${c.dark};}${BASE_CSS}${extra || ""}</style>`;
   }
   _icon(s, fallback) {
     return this._config.icon || (s && s.attributes.icon) || fallback;
@@ -1102,7 +1113,8 @@ class JmaPopup extends HTMLElement {
     const c = this._config;
     this.shadowRoot.innerHTML = `
       <style>
-        :host{--jma-rose:${c.color || ROSE};--jma-beige:${c.accent || BEIGE};--jma-dark:${c.dark || DARK};}
+        :host{--jma-rose:${c.color || ROSE};--jma-beige:${c.accent || BEIGE};--jma-blue:${c.blue || BLUE};--jma-dark:${c.dark || DARK};
+          --jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose) 70%,var(--jma-beige));}
         .back{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);
           backdrop-filter:blur(6px);opacity:0;transition:opacity .26s ease;display:flex;align-items:flex-end;justify-content:center;}
         .back.show{opacity:1;}
@@ -1138,12 +1150,12 @@ class JmaPopup extends HTMLElement {
         .btns{display:flex;gap:8px;flex-wrap:wrap;}
         .btn{flex:1;min-width:84px;padding:13px;border:none;border-radius:16px;cursor:pointer;background:rgba(255,255,255,.08);color:#fff;font-weight:600;font-size:.9rem;transition:all .2s;}
         .btn:hover{background:rgba(248,165,194,.18);}
-        .btn.primary{background:var(--jma-rose);color:var(--jma-dark);}
-        .btn.on{background:var(--jma-rose);color:var(--jma-dark);}
+        .btn.primary{background:var(--jma-grad);color:var(--jma-dark);}
+        .btn.on{background:var(--jma-grad);color:var(--jma-dark);}
         .transport{display:flex;justify-content:center;gap:18px;align-items:center;}
         .tbtn{width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:rgba(255,255,255,.08);color:#fff;display:flex;align-items:center;justify-content:center;}
         .tbtn ha-icon{--mdc-icon-size:26px;}
-        .tbtn.big{width:64px;height:64px;background:var(--jma-rose);}
+        .tbtn.big{width:64px;height:64px;background:var(--jma-grad);}
         .tbtn.big ha-icon{color:var(--jma-dark);}
         .gaugewrap{height:10px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden;margin-top:8px;}
         .gaugefill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--jma-beige),var(--jma-rose));transition:width .4s;}
@@ -1178,7 +1190,7 @@ class JmaPopup extends HTMLElement {
         .srn{font-size:.8rem;font-weight:600;width:80px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .chiprow{display:flex;gap:6px;flex-wrap:wrap;}
         .pchip{padding:7px 11px;border-radius:11px;background:rgba(255,255,255,.1);border:none;color:#fff;cursor:pointer;font-size:.8rem;text-transform:capitalize;}
-        .pchip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
+        .pchip.on{background:var(--jma-grad);color:var(--jma-dark);font-weight:700;}
         .camimg{width:100%;border-radius:16px;display:block;background:#000;aspect-ratio:16/9;object-fit:cover;}
         .graph{--ha-card-background:transparent;--card-background-color:transparent;background:transparent;display:block;}
         .gw{position:relative;height:90px;touch-action:none;cursor:crosshair;}
