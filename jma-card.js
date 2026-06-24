@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.35.0";
+const VERSION = "0.36.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -2789,6 +2789,10 @@ class JmaEnergyCard extends HTMLElement {
         .leg b{font-weight:800;}
         .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
         .ecap{display:flex;justify-content:space-between;font-size:.64rem;font-weight:600;opacity:.55;margin-top:2px;}
+        .eday{margin-top:9px;display:flex;flex-direction:column;gap:6px;}
+        .eday[hidden]{display:none;}
+        .edhead{display:flex;justify-content:space-between;font-size:.72rem;font-weight:800;opacity:.78;}
+        .daybar{height:16px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
         <div class="top"><div class="badge"><ha-icon id="ic" icon="mdi:flash"></ha-icon></div>
@@ -2799,7 +2803,15 @@ class JmaEnergyCard extends HTMLElement {
           <span><span class="dot" style="background:var(--jma-rose)"></span>Solaire <b id="sol">—</b></span>
           <span><span class="dot" style="background:var(--edf)"></span>EDF <b id="grd">—</b></span>
         </div>
-        <div class="ecap"><span>Puissance</span><span id="ewin"></span></div>
+        <div class="eday" id="eday" hidden>
+          <div class="edhead"><span>📅 Aujourd'hui</span><span id="edtot">—</span></div>
+          <div class="ebar daybar"><div class="s" id="dbs"></div><div class="g" id="dbg"></div></div>
+          <div class="leg">
+            <span><span class="dot" style="background:var(--jma-rose)"></span>Solaire <b id="dsol">—</b></span>
+            <span><span class="dot" style="background:var(--edf)"></span>Réseau EDF <b id="dgrd">—</b></span>
+          </div>
+        </div>
+        <div class="ecap"><span>Puissance instantanée</span><span id="ewin"></span></div>
         <div class="spark" id="espk" style="height:48px;"></div>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
@@ -2840,6 +2852,21 @@ class JmaEnergyCard extends HTMLElement {
         { entity: this._config.production_entity, color: this._config.color, fill: true },
         { entity: this._config.grid_entity, color: this._config.grid_color },
       ], win);
+    }
+    // totaux du jour (kWh) + barre comparative
+    const eday = this.shadowRoot.getElementById("eday");
+    if (eday) {
+      const pT = this._num("production_today_entity"), gT = this._num("grid_today_entity");
+      if (pT != null || gT != null) {
+        eday.hidden = false;
+        const sp = Math.max(0, pT || 0), gr = Math.max(0, gT || 0), tot = Math.max(sp + gr, 0.001);
+        const k = (v) => (Math.round(v * 10) / 10).toString().replace(".", ",") + " kWh";
+        this.shadowRoot.getElementById("dbs").style.width = (sp / tot * 100) + "%";
+        this.shadowRoot.getElementById("dbg").style.width = (gr / tot * 100) + "%";
+        this.shadowRoot.getElementById("dsol").textContent = pT != null ? k(sp) : "—";
+        this.shadowRoot.getElementById("dgrd").textContent = gT != null ? k(gr) : "—";
+        this.shadowRoot.getElementById("edtot").textContent = "Total " + k(sp + gr);
+      } else eday.hidden = true;
     }
   }
 }
@@ -3167,6 +3194,7 @@ const ED_LABELS = {
   columns: "Colonnes", alarm_entity: "Centrale d'alarme", cameras: "Caméras", sensors: "Capteurs porte/fenêtre",
   timeout: "Délai d'inactivité (min)", weather_entity: "Météo", show_date: "Afficher la date", map_entity: "Caméra carte (Roborock)",
   grid_entity: "Réseau EDF (W)", agenda_entities: "Calendriers (veille)",
+  production_today_entity: "Solaire du jour (kWh)", grid_today_entity: "Réseau EDF du jour (kWh)", spark_hours: "Période graphe (h)",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -3199,7 +3227,8 @@ function jmaEditorSchema(type) {
     txt("color"), txt("accent")];
   if (t === "custom:jma-energy-card") return [
     txt("title"), ent("production_entity", "sensor"), ent("grid_entity", "sensor"), ent("consumption_entity", "sensor"),
-    txt("grid_color"), txt("color"), txt("accent")];
+    ent("production_today_entity", "sensor"), ent("grid_today_entity", "sensor"),
+    num("spark_hours", 1, 168), txt("grid_color"), txt("color"), txt("accent")];
   if (t === "custom:jma-weather-card") return [
     ent("entity", "weather", false, true), txt("name"),
     { name: "show_forecast", selector: { boolean: {} } }, num("days", 1, 7), txt("color"), txt("accent")];
@@ -3671,14 +3700,33 @@ class JmaScreensaverCard extends HTMLElement {
   _show() {
     if (this._shown) return; this._shown = true;
     const o = document.createElement("div");
-    o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .6s ease;";
-    const col = document.createElement("div"); col.style.cssText = "text-align:center;transition:transform 2s ease;display:flex;flex-direction:column;align-items:center;gap:1.2vh;max-width:90vw;";
-    col.innerHTML = `<div id="jct" style="font-weight:300;font-size:14vw;line-height:.92;letter-spacing:-2px;">--:--</div>` +
-      (this._config.show_date ? `<div id="jcd" style="font-size:3vw;opacity:.62;text-transform:capitalize;">—</div>` : "") +
-      `<div id="jcw" style="font-size:3.2vw;opacity:.85;display:flex;gap:10px;align-items:center;justify-content:center;"></div>` +
-      `<div id="jce" style="font-size:3.4vw;font-weight:600;display:flex;gap:1vw;align-items:center;justify-content:center;margin-top:1vh;"></div>` +
-      `<div id="jca" style="font-size:2.4vw;opacity:.92;display:flex;flex-direction:column;gap:.7vh;margin-top:1.2vh;min-width:46vw;"></div>`;
-    o.appendChild(col);
+    o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:radial-gradient(125% 120% at 50% 10%,#141826 0%,#080a11 58%,#000 100%);color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .7s ease;";
+    const st = document.createElement("style");
+    st.textContent = `
+      .ss-col{text-align:center;transition:transform 2.5s ease;display:flex;flex-direction:column;align-items:center;gap:1vh;max-width:92vw;}
+      .ss-time{font-weight:200;font-size:15vw;line-height:.9;letter-spacing:-.6vw;text-shadow:0 0 9vw rgba(123,162,255,.14);}
+      .ss-date{font-size:2.7vw;opacity:.5;text-transform:capitalize;letter-spacing:.25vw;margin-top:-.4vh;}
+      .ss-wx{display:inline-flex;gap:1.1vw;align-items:center;font-size:2.7vw;opacity:.8;}
+      .ss-wx ha-icon{--mdc-icon-size:3.2vw;}
+      .ss-sep{width:28vw;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);margin:.6vh 0 1.2vh;}
+      .ss-energy{display:flex;gap:1.8vw;flex-wrap:wrap;justify-content:center;}
+      .ss-pill{display:inline-flex;align-items:center;gap:1vw;padding:1vh 2.6vw;border-radius:99px;background:rgba(255,255,255,.055);
+        border:1px solid rgba(255,255,255,.07);font-size:2.8vw;font-weight:600;}
+      .ss-pill ha-icon{--mdc-icon-size:3.2vw;}
+      .ss-pill.sun{color:#f7b6cb;}.ss-pill.bolt{color:#8fb4ff;}
+      .ss-agenda{display:flex;flex-direction:column;gap:1vh;margin-top:1.2vh;}
+      .ss-ev{display:flex;align-items:baseline;gap:1.6vw;font-size:2.2vw;}
+      .ss-ev .when{color:#f7b6cb;font-weight:700;white-space:nowrap;min-width:16vw;text-align:right;}
+      .ss-ev .what{opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:54vw;}
+    `;
+    const col = document.createElement("div"); col.className = "ss-col";
+    col.innerHTML = `<div class="ss-time" id="jct">--:--</div>` +
+      (this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : "") +
+      `<div class="ss-wx" id="jcw"></div>` +
+      `<div class="ss-sep" id="jcsep" style="display:none"></div>` +
+      `<div class="ss-energy" id="jce"></div>` +
+      `<div class="ss-agenda" id="jca"></div>`;
+    o.appendChild(st); o.appendChild(col);
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
     document.body.appendChild(o); this._ovl = o; this._clkEl = col;
     if (window.requestAnimationFrame) requestAnimationFrame(() => { o.style.opacity = "1"; }); else o.style.opacity = "1";
@@ -3702,9 +3750,11 @@ class JmaScreensaverCard extends HTMLElement {
       const prod = this._wsv("production_entity"); let conso = this._wsv("consumption_entity");
       if (conso == null) { const g = this._wsv("grid_entity"); if (g != null) conso = Math.max(0, g) + Math.max(0, prod || 0); }
       const parts = [];
-      if (prod != null) parts.push(`<span style="color:#f8a5c2;display:inline-flex;align-items:center;gap:.6vw"><ha-icon icon="mdi:solar-power" style="--mdc-icon-size:3.6vw"></ha-icon>${f(Math.max(0, prod))}</span>`);
-      if (conso != null) parts.push(`<span style="color:#7fb0ff;display:inline-flex;align-items:center;gap:.6vw"><ha-icon icon="mdi:flash" style="--mdc-icon-size:3.6vw"></ha-icon>${f(Math.max(0, conso))}</span>`);
-      ce.innerHTML = parts.join(`<span style="opacity:.35;margin:0 1.2vw">·</span>`);
+      if (prod != null) parts.push(`<span class="ss-pill sun"><ha-icon icon="mdi:solar-power"></ha-icon>${f(Math.max(0, prod))}</span>`);
+      if (conso != null) parts.push(`<span class="ss-pill bolt"><ha-icon icon="mdi:flash"></ha-icon>${f(Math.max(0, conso))}</span>`);
+      ce.innerHTML = parts.join("");
+      const sep = this._ovl.querySelector("#jcsep");
+      if (sep) sep.style.display = (parts.length || (this._events && this._events.length)) ? "block" : "none";
     }
   }
   async _fetchAgenda() {
@@ -3723,8 +3773,9 @@ class JmaScreensaverCard extends HTMLElement {
     const dn = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
     ca.innerHTML = this._events.map((e) => {
       const day = dn[e.d.getDay()] + " " + e.d.getDate(); const hm = e.allday ? "" : (" " + ("0" + e.d.getHours()).slice(-2) + ":" + ("0" + e.d.getMinutes()).slice(-2));
-      return `<div style="display:flex;gap:1.4vw;align-items:baseline;justify-content:center;"><span style="color:#f8a5c2;font-weight:700;white-space:nowrap;">${day}${hm}</span><span style="opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw;">${e.t}</span></div>`;
+      return `<div class="ss-ev"><span class="when">${day}${hm}</span><span class="what">${e.t}</span></div>`;
     }).join("");
+    const sep = this._ovl.querySelector("#jcsep"); if (sep) sep.style.display = "block";
   }
   _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); this._idle = 0; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
