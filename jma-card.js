@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.21.0";
+const VERSION = "0.21.1";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -2171,7 +2171,12 @@ class JmaSonosCard extends HTMLElement {
       </div></div></ha-card>`;
     this.shadowRoot.querySelectorAll(".tbtn").forEach((b) =>
       b.addEventListener("click", (e) => { e.stopPropagation(); this._call(b.dataset.a, { entity_id: this._master() }); }));
-    this.shadowRoot.getElementById("tile").addEventListener("click", (e) => { if (e.target.closest(".tbtn")) return; this._openPopup(); });
+    this._gsl = jmaSlider({ icon: "mdi:volume-high", fmt: (v) => v + "%", onCommit: (v) => {
+      const m = this._master(); const grp = (this._hass.states[m] && this._hass.states[m].attributes.group_members) || [m];
+      grp.forEach((eid) => { if (this._hass.states[eid] && this._hass.states[eid].attributes.volume_level != null) this._call("volume_set", { entity_id: eid, volume_level: v / 100 }); });
+    } });
+    this.shadowRoot.querySelector(".content").appendChild(this._gsl);
+    this.shadowRoot.getElementById("tile").addEventListener("click", (e) => { if (e.target.closest(".tbtn") || e.target.closest(".slider")) return; this._openPopup(); });
   }
   _openPopup() {
     if (this._popup) return;
@@ -2193,6 +2198,11 @@ class JmaSonosCard extends HTMLElement {
     this.shadowRoot.getElementById("tile").classList.toggle("on", ["playing", "paused"].includes(ms.state));
     const art = this.shadowRoot.querySelector(".art");
     art.style.backgroundImage = a.entity_picture && ["playing", "paused"].includes(ms.state) ? `url("${a.entity_picture}")` : "";
+    // volume global = moyenne du groupe
+    const grp = a.group_members || [master];
+    const vols = grp.map((e) => this._hass.states[e]).filter((x) => x && x.attributes.volume_level != null).map((x) => x.attributes.volume_level);
+    if (vols.length) { this._gsl.hidden = false; this._gsl.setValue(Math.round((vols.reduce((p, v) => p + v, 0) / vols.length) * 100)); }
+    else this._gsl.hidden = true;
   }
 }
 customElements.define("jma-sonos-card", JmaSonosCard);
