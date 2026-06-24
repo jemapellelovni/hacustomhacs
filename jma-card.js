@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.11.0";
+const VERSION = "0.11.1";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -370,19 +370,22 @@ class JmaSwitchCard extends JmaBase {
 class JmaCoverCard extends JmaBase {
   static getStubConfig() { return { entity: "cover.example" }; }
   _build() {
-    this.shadowRoot.innerHTML = this._styleBlock() + CARD_WRAP_OPEN +
+    const extra = `.covb{display:flex;gap:5px;flex:none;}
+      .covb .cbtn{width:30px;height:30px;min-width:0;border-radius:9px;}
+      .covb .cbtn ha-icon{--mdc-icon-size:18px;}`;
+    this.shadowRoot.innerHTML = this._styleBlock(extra) + CARD_WRAP_OPEN +
       `<div class="tile flat"><div class="content">
          <div class="top"><div class="badge"><ha-icon class="ic"></ha-icon></div>
-           <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
-         <div class="btnrow">
-           <button class="cbtn" data-a="open_cover"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
-           <button class="cbtn" data-a="stop_cover"><ha-icon icon="mdi:stop"></ha-icon></button>
-           <button class="cbtn" data-a="close_cover"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
-         </div>
+           <div class="meta"><div class="name"></div><div class="sub"></div></div>
+           <div class="covb">
+             <button class="cbtn" data-a="open_cover"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
+             <button class="cbtn" data-a="stop_cover"><ha-icon icon="mdi:stop"></ha-icon></button>
+             <button class="cbtn" data-a="close_cover"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
+           </div></div>
        </div></div></ha-card>`;
     this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
-      b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: this._config.entity }))
+      b.addEventListener("click", (e) => { e.stopPropagation(); this._call("cover", b.dataset.a, { entity_id: this._config.entity }); })
     );
     const feat = (this._s && this._s.attributes.supported_features) || 0;
     if (feat & 4) { // SET_POSITION
@@ -974,6 +977,15 @@ class JmaPopup extends HTMLElement {
         .pchip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
         .camimg{width:100%;border-radius:16px;display:block;background:#000;aspect-ratio:16/9;object-fit:cover;}
         .graph{--ha-card-background:transparent;--card-background-color:transparent;background:transparent;display:block;}
+        .gw{position:relative;height:90px;touch-action:none;cursor:crosshair;}
+        .gw svg{width:100%;height:100%;display:block;}
+        .gline{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.35);pointer-events:none;display:none;}
+        .gmark{position:absolute;width:9px;height:9px;border-radius:50%;background:#fff;transform:translate(-50%,-50%);
+          box-shadow:0 0 0 3px rgba(255,255,255,.22);pointer-events:none;display:none;}
+        .gtip{position:absolute;transform:translate(-50%,calc(-100% - 10px));background:rgba(10,10,11,.96);
+          border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:4px 8px;font-size:.68rem;font-weight:700;
+          white-space:nowrap;pointer-events:none;display:none;z-index:4;}
+        .gmsg{opacity:.45;font-size:.74rem;padding-top:34px;text-align:center;}
       </style>
       <div class="back" id="wrap">
         <div class="sheet" id="sheet">
@@ -1059,9 +1071,10 @@ class JmaPopup extends HTMLElement {
     entities = (entities || []).filter(Boolean);
     if (!entities.length || !this._hass) return;
     hours = hours || 24;
-    host.innerHTML = `<div class="lbl"><span>Historique ${hours} h</span><b id="gv"></b></div><div id="gw" style="position:relative;height:88px;"></div>`;
+    host.innerHTML = `<div class="lbl"><span>Historique ${hours} h</span><b id="gv"></b></div>` +
+      `<div class="gw" id="gw"><div class="gmsg">chargement…</div><div class="gline"></div><div class="gmark"></div><div class="gtip"></div></div>`;
     const gw = host.querySelector("#gw");
-    gw.innerHTML = `<div style="opacity:.45;font-size:.74rem;padding-top:32px;">chargement…</div>`;
+    const setMsg = (m) => { const e = gw.querySelector(".gmsg"); if (e) e.textContent = m; };
     try {
       const end = new Date(), start = new Date(Date.now() - hours * 3600000);
       const path = `history/period/${start.toISOString()}?end_time=${encodeURIComponent(end.toISOString())}` +
@@ -1076,29 +1089,52 @@ class JmaPopup extends HTMLElement {
           .filter((p) => !isNaN(p.v) && !isNaN(p.t));
         return { eid, pts, color: colors[i % colors.length] };
       }).filter((l) => l.pts.length > 1);
-      if (!lines.length) { gw.innerHTML = `<div style="opacity:.5;font-size:.74rem;padding-top:32px;">Pas d'historique numérique</div>`; return; }
+      if (!lines.length) { setMsg("Pas d'historique numérique"); return; }
       let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
       lines.forEach((l) => l.pts.forEach((p) => { tMin = Math.min(tMin, p.t); tMax = Math.max(tMax, p.t); vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v); }));
       if (vMin === vMax) { vMin -= 1; vMax += 1; }
-      const W = 320, H = 88, pad = 5;
+      const W = 320, H = 90, pad = 5;
       const sx = (t) => pad + ((t - tMin) / (tMax - tMin || 1)) * (W - 2 * pad);
       const sy = (v) => H - pad - ((v - vMin) / (vMax - vMin || 1)) * (H - 2 * pad);
-      let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">`;
+      let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
       lines.forEach((l, idx) => {
         const d = l.pts.map((p, i) => (i ? "L" : "M") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1)).join(" ");
         if (idx === 0) svg += `<path d="${d} L ${sx(l.pts[l.pts.length - 1].t).toFixed(1)} ${H - pad} L ${sx(l.pts[0].t).toFixed(1)} ${H - pad} Z" fill="${l.color}" opacity=".12"/>`;
         svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       });
       svg += `</svg>`;
-      gw.innerHTML = svg;
+      gw.querySelector(".gmsg").remove();
+      gw.insertAdjacentHTML("afterbegin", svg);
       const last = lines[0].pts[lines[0].pts.length - 1].v;
       const gv = host.querySelector("#gv"); if (gv) gv.textContent = (Math.round(last * 10) / 10) + "";
       const lab = document.createElement("div");
       lab.style.cssText = "display:flex;justify-content:space-between;font-size:.64rem;opacity:.5;margin-top:2px;";
       lab.innerHTML = `<span>min ${Math.round(vMin)}</span><span>max ${Math.round(vMax)}</span>`;
       host.appendChild(lab);
+      // ---- interactif : survol / toucher = valeur + heure ----
+      const prim = lines[0];
+      const unit = (this._hass.states[prim.eid] && this._hass.states[prim.eid].attributes.unit_of_measurement) || "";
+      const norm = prim.pts.map((p) => ({ x: sx(p.t) / W, y: sy(p.v) / H, v: p.v, t: p.t }));
+      const line = gw.querySelector(".gline"), mark = gw.querySelector(".gmark"), tip = gw.querySelector(".gtip");
+      const move = (e) => {
+        const r = gw.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        let best = norm[0], bd = 2;
+        for (const p of norm) { const dd = Math.abs(p.x - ratio); if (dd < bd) { bd = dd; best = p; } }
+        const px = best.x * r.width, py = best.y * r.height;
+        line.style.display = mark.style.display = tip.style.display = "block";
+        line.style.left = px + "px"; mark.style.left = px + "px"; mark.style.top = py + "px"; mark.style.background = prim.color;
+        tip.style.left = Math.max(30, Math.min(r.width - 30, px)) + "px"; tip.style.top = py + "px";
+        const dt = new Date(best.t), hh = ("" + dt.getHours()).padStart(2, "0") + ":" + ("" + dt.getMinutes()).padStart(2, "0");
+        tip.textContent = (Math.round(best.v * 10) / 10) + (unit ? " " + unit : "") + " · " + hh;
+      };
+      const hide = () => { line.style.display = mark.style.display = tip.style.display = "none"; };
+      gw.addEventListener("pointermove", move);
+      gw.addEventListener("pointerdown", move);
+      gw.addEventListener("pointerleave", hide);
+      gw.addEventListener("pointercancel", hide);
     } catch (e) {
-      gw.innerHTML = `<div style="opacity:.5;font-size:.74rem;padding-top:32px;">Historique indisponible</div>`;
+      setMsg("Historique indisponible");
     }
   }
   _evState() {
