@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.22.0";
+const VERSION = "0.23.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -55,11 +55,13 @@ function jmaBatIcon(p, charging) {
 //  STYLE & HELPERS PARTAGÉS
 // =============================================================================
 const BASE_CSS = `
-  :host{--jma-blue:#5b9bff;--jma-text:#fff;--jma-icon:rgba(255,255,255,.8);--jma-surf:rgba(255,255,255,.06);
-    --jma-surf2:rgba(255,255,255,.12);--jma-surf3:rgba(255,255,255,.1);--jma-track:rgba(255,255,255,.16);
-    --jma-ripple:rgba(255,255,255,.35);--jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose) 70%,var(--jma-beige));}
-  :host(.light){--jma-text:#15161a;--jma-icon:rgba(20,22,26,.7);--jma-surf:rgba(0,0,0,.045);
-    --jma-surf2:rgba(0,0,0,.07);--jma-surf3:rgba(0,0,0,.06);--jma-track:rgba(0,0,0,.12);--jma-ripple:rgba(0,0,0,.14);}
+  :host{--jma-blue:#5b9bff;
+    --jma-text:#33291c;--jma-icon:rgba(51,41,28,.72);
+    --jma-surf:rgba(255,251,243,.6);--jma-surf2:rgba(51,41,28,.09);--jma-surf3:rgba(51,41,28,.07);
+    --jma-track:rgba(51,41,28,.14);--jma-ripple:rgba(51,41,28,.12);
+    --jma-grad:linear-gradient(135deg,var(--jma-blue),var(--jma-rose) 70%,var(--jma-beige));}
+  :host(.dark){--jma-text:#fff;--jma-icon:rgba(255,255,255,.8);--jma-surf:rgba(255,255,255,.06);
+    --jma-surf2:rgba(255,255,255,.12);--jma-surf3:rgba(255,255,255,.1);--jma-track:rgba(255,255,255,.16);--jma-ripple:rgba(255,255,255,.35);}
   .tile{position:relative;overflow:hidden;border-radius:18px;min-height:60px;height:100%;
     padding:11px;box-sizing:border-box;background:var(--jma-surf);
     backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
@@ -154,11 +156,12 @@ const BASE_CSS = `
 `;
 
 // thème : applique la classe .light sur l'hôte selon la config et le thème HA
+// thème : par défaut BEIGE clair ; classe .dark seulement si demandé
 function jmaApplyTheme(host, hass, config) {
-  const mode = (config && config.theme) || "auto";
-  let light = mode === "light";
-  if (mode === "auto") light = !!(hass && hass.themes && hass.themes.darkMode === false);
-  host.classList.toggle("light", light);
+  const mode = (config && config.theme) || "beige";
+  let dark = mode === "dark";
+  if (mode === "auto") dark = !!(hass && hass.themes && hass.themes.darkMode === true);
+  host.classList.toggle("dark", dark);
 }
 
 // mini sparkline NON interactive pour les tuiles -> remplit host avec un SVG
@@ -2734,7 +2737,7 @@ function jmaEditorSchema(type) {
   const txt = (name) => ({ name, selector: { text: {} } });
   const num = (name, min, max) => ({ name, selector: { number: { mode: "box", min: min ?? 0, max: max ?? 99, step: 1 } } });
   const sel = (name, opts) => ({ name, selector: { select: { mode: "dropdown", options: opts.map((o) => typeof o === "string" ? { value: o, label: o } : o) } } });
-  const themeSel = sel("theme", [{ value: "auto", label: "Auto (thème HA)" }, { value: "dark", label: "Sombre" }, { value: "light", label: "Clair" }]);
+  const themeSel = sel("theme", [{ value: "beige", label: "Beige (défaut)" }, { value: "dark", label: "Sombre" }, { value: "auto", label: "Auto (thème HA)" }]);
   const tail = [txt("color"), txt("accent"), sel("tap_action", [
     { value: "popup", label: "Pop-up JMA" }, { value: "more-info", label: "Fiche HA" }, { value: "none", label: "Aucun" }]), themeSel];
   if (t === "custom:jma-sensor-card") return [
