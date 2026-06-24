@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.44.0";
+const VERSION = "0.45.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1306,6 +1306,22 @@ class JmaPopup extends HTMLElement {
         .creal{position:absolute;top:-6px;bottom:-6px;width:3px;border-radius:3px;background:var(--p-text);transform:translateX(-50%);pointer-events:none;z-index:3;}
         .creal::after{content:attr(data-t);position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:.62rem;font-weight:800;white-space:nowrap;}
         .cscale{display:flex;justify-content:space-between;font-size:.64rem;opacity:.5;font-weight:700;margin-top:8px;}
+        .grow{display:flex;align-items:center;gap:11px;flex-wrap:wrap;background:var(--p-surf);border:1px solid var(--p-line);border-radius:16px;padding:9px 11px;margin:8px 0;}
+        .gicon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--p-track);flex:none;transition:background .3s;}
+        .gicon ha-icon{--mdc-icon-size:22px;color:var(--p-text);transition:color .3s;}
+        .grow.on .gicon{background:var(--jma-grad);}.grow.on .gicon ha-icon{color:var(--jma-dark);}
+        .grow.warn .gicon{background:linear-gradient(135deg,#ffb24d,#ff7e42);}.grow.warn .gicon ha-icon{color:#3a1d00;}
+        .grow.cool .gicon{background:linear-gradient(135deg,#7fb0ff,#5b9bff);}.grow.cool .gicon ha-icon{color:#04204a;}
+        .gmeta{flex:1;min-width:90px;}
+        .gn{font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .gs{font-size:.75rem;opacity:.62;margin-top:1px;}
+        .gbtns{display:flex;gap:5px;flex:none;}
+        .gbtns .cbtn{min-width:40px;}
+        .gctl{display:flex;align-items:center;gap:8px;flex:none;}
+        .gstep{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;background:var(--p-track);color:var(--p-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+        .gstep:active{transform:scale(.9);}.gstep ha-icon{--mdc-icon-size:20px;}
+        .gset{font-weight:800;font-size:1.3rem;min-width:46px;text-align:center;letter-spacing:-.5px;}
+        .gslider{flex-basis:100%;}.gslider .slider{height:30px;}
         .swatches{display:flex;gap:10px;flex-wrap:wrap;}
         .sw{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid var(--p-line);transition:transform .2s;}
         .sw:hover{transform:scale(1.12);}
@@ -2041,24 +2057,26 @@ class JmaPopup extends HTMLElement {
     this._covRows = {};
     list.forEach((eid) => {
       const s = this._hass.states[eid]; const nm = (this._config.names && this._config.names[eid]) || ((s && s.attributes.friendly_name) || eid);
-      const row = document.createElement("div"); row.className = "row";
       const supportsPos = s && (s.attributes.current_position != null || ((s.attributes.supported_features || 0) & 4));
-      row.innerHTML = `<div class="lbl"><span>${nm}</span><b class="cvp"></b></div>`;
-      const wrap = document.createElement("div"); wrap.style.cssText = "display:flex;gap:8px;align-items:center;";
-      const bts = document.createElement("div"); bts.className = "btnrow"; bts.style.flex = "none";
-      bts.innerHTML = `<button class="cbtn covb" data-a="open_cover"><ha-icon icon="mdi:arrow-up"></ha-icon></button><button class="cbtn covb" data-a="stop_cover"><ha-icon icon="mdi:stop"></ha-icon></button><button class="cbtn covb" data-a="close_cover"><ha-icon icon="mdi:arrow-down"></ha-icon></button>`;
-      bts.querySelectorAll(".cbtn").forEach((b) => b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: eid })));
-      wrap.appendChild(bts);
+      const row = document.createElement("div"); row.className = "grow cover";
+      row.innerHTML = `<div class="gicon"><ha-icon class="gi" icon="mdi:window-shutter"></ha-icon></div>` +
+        `<div class="gmeta"><div class="gn">${nm}</div><div class="gs cvp"></div></div>` +
+        `<div class="gbtns"><button class="cbtn covb" data-a="open_cover"><ha-icon icon="mdi:arrow-up"></ha-icon></button>` +
+        `<button class="cbtn covb" data-a="stop_cover"><ha-icon icon="mdi:stop"></ha-icon></button>` +
+        `<button class="cbtn covb" data-a="close_cover"><ha-icon icon="mdi:arrow-down"></ha-icon></button></div>`;
+      row.querySelectorAll(".cbtn").forEach((b) => b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: eid })));
       let sl = null;
-      if (supportsPos) { sl = jmaSlider({ icon: "mdi:window-shutter", fmt: (v) => v + "%", label: nm, onCommit: (v) => this._call("cover", "set_cover_position", { entity_id: eid, position: v }) }); wrap.appendChild(sl); }
-      row.appendChild(wrap); body.appendChild(row);
+      if (supportsPos) { sl = jmaSlider({ icon: "mdi:window-shutter", fmt: (v) => v + "%", label: nm, onCommit: (v) => this._call("cover", "set_cover_position", { entity_id: eid, position: v }) }); const sw = document.createElement("div"); sw.className = "gslider"; sw.appendChild(sl); row.appendChild(sw); }
+      body.appendChild(row);
       this._covRows[eid] = { row, sl };
     });
     this._coversTick = () => {
       list.forEach((eid) => {
         const s = this._hass.states[eid], r = this._covRows[eid]; if (!s || !r) return;
-        const p = s.attributes.current_position;
-        r.row.querySelector(".cvp").textContent = p != null ? p + "%" : (s.state === "open" ? "Ouvert" : s.state === "closed" ? "Fermé" : s.state);
+        const p = s.attributes.current_position, open = s.state === "open" || (p || 0) > 0;
+        r.row.classList.toggle("on", open);
+        r.row.querySelector(".gi").setAttribute("icon", open ? "mdi:window-shutter-open" : "mdi:window-shutter");
+        r.row.querySelector(".cvp").textContent = p != null ? p + "% ouvert" : (open ? "Ouvert" : s.state === "closed" ? "Fermé" : s.state);
         if (r.sl && p != null) r.sl.setValue(p);
       });
     };
@@ -2069,10 +2087,11 @@ class JmaPopup extends HTMLElement {
     this._climRows = {};
     list.forEach((eid) => {
       const s = this._hass.states[eid]; const nm = (this._config.names && this._config.names[eid]) || ((s && s.attributes.friendly_name) || eid);
-      const row = document.createElement("div"); row.className = "row";
-      row.innerHTML = `<div class="lbl"><span>${nm}</span><b class="clst"></b></div>` +
-        `<div class="therm"><button class="step" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="set clset">—</div><button class="step" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>`;
-      row.querySelectorAll(".step").forEach((b) => b.addEventListener("click", () => {
+      const row = document.createElement("div"); row.className = "grow climate";
+      row.innerHTML = `<div class="gicon"><ha-icon class="gi" icon="mdi:thermostat"></ha-icon></div>` +
+        `<div class="gmeta"><div class="gn">${nm}</div><div class="gs clst"></div></div>` +
+        `<div class="gctl"><button class="gstep" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="gset clset">—</div><button class="gstep" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>`;
+      row.querySelectorAll(".gstep").forEach((b) => b.addEventListener("click", () => {
         const st = this._hass.states[eid]; if (!st) return; const a = st.attributes; const step = a.target_temp_step || 0.5;
         const min = a.min_temp ?? 7, max = a.max_temp ?? 35; let t = (a.temperature ?? min) + Number(b.dataset.d) * step;
         t = Math.max(min, Math.min(max, Math.round(t / step) * step));
@@ -2086,6 +2105,10 @@ class JmaPopup extends HTMLElement {
         row.querySelector(".clset").textContent = a.temperature != null ? a.temperature + "°" : "—";
         const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "° · " : "";
         row.querySelector(".clst").textContent = cur + (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
+        row.classList.toggle("on", s.state !== "off" && s.state !== "unavailable" && !["heating", "cooling", "preheating"].includes(a.hvac_action));
+        row.classList.toggle("warn", ["heating", "preheating"].includes(a.hvac_action));
+        row.classList.toggle("cool", a.hvac_action === "cooling");
+        row.querySelector(".gi").setAttribute("icon", a.hvac_action === "cooling" ? "mdi:snowflake" : ["heating", "preheating"].includes(a.hvac_action) ? "mdi:fire" : "mdi:thermostat");
       });
     };
     this._climatesTick();
@@ -2784,7 +2807,8 @@ class JmaAgendaCard extends HTMLElement {
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
         .content{gap:6px;}
         #list{display:flex;flex-direction:column;gap:0;}
-        .day{font-weight:800;font-size:.64rem;opacity:.5;margin-top:7px;margin-bottom:1px;text-transform:uppercase;letter-spacing:.4px;}
+        .day{display:flex;align-items:baseline;gap:7px;font-weight:800;font-size:.64rem;opacity:.55;margin-top:7px;margin-bottom:1px;text-transform:uppercase;letter-spacing:.4px;}
+        .day .s{color:var(--jma-rose);opacity:.95;font-weight:700;text-transform:none;letter-spacing:0;font-size:.62rem;}
         .ev{display:flex;gap:8px;align-items:center;padding:3px 2px;}
         .dot{width:6px;height:6px;border-radius:50%;background:var(--jma-rose);flex:none;}
         .t{font-size:.69rem;opacity:.65;min-width:36px;font-weight:700;font-variant-numeric:tabular-nums;}
@@ -2826,7 +2850,14 @@ class JmaAgendaCard extends HTMLElement {
     let last = "";
     shown.forEach(({ d, allday, e }) => {
       const dk = d.toDateString();
-      if (dk !== last) { last = dk; const h = document.createElement("div"); h.className = "day"; h.textContent = dn[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth() + 1); list.appendChild(h); }
+      if (dk !== last) {
+        last = dk; const h = document.createElement("div"); h.className = "day";
+        const saint = (typeof SAINTS !== "undefined" && (SAINTS[d.getMonth()] || [])[d.getDate() - 1]) || "";
+        const special = /^(N\.-D\.|Toussaint|Défunts|Assomption|Annonciation|Présentation|Transfiguration|Nativité|La Sainte|Imm\.|Noël|Conversion|Marie$)/.test(saint);
+        const sl = saint ? (special ? saint : "St" + (/^[AÉEIOUYH]/i.test(saint) ? "e " : " ") + saint) : "";
+        h.innerHTML = `<span>${dn[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}</span>` + (sl ? `<span class="s">✦ ${sl}</span>` : "");
+        list.appendChild(h);
+      }
       const row = document.createElement("div"); row.className = "ev";
       const tt = allday ? "jour" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
       row.innerHTML = `<span class="dot"></span><span class="t">${tt}</span><span class="ti">${e.summary || e.message || "(sans titre)"}</span>`;
