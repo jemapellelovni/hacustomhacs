@@ -1,11 +1,25 @@
-# 🎚️ JMA Card
+# 🎚️ JMA Cards
 
-Card Lovelace **universelle**, design **flat / iOS**, avec un **slider horizontal**
-(barre à glisser distincte, façon app Maison iOS) — luminosité, température, volume, position de volet.
-
-Vanilla JS, **zéro build, zéro dépendance**, un seul fichier.
+Set de cartes Lovelace **flat / iOS**, vanilla JS (**zéro build, zéro dépendance**, un seul fichier),
+avec un **slider horizontal** (barre à glisser distincte, façon app Maison iOS).
 
 > Palette par défaut : rose `#f8a5c2` · beige `#DEC198` · fond `#0a0a0b` · texte blanc.
+
+## 🧩 Cartes du set
+| Type | Pour | Contrôles |
+|------|------|-----------|
+| `custom:jma-card` | tout (auto) | slider horizontal + pop-up |
+| `custom:jma-light-card` | lumière | slider luminosité, tap = on/off |
+| `custom:jma-switch-card` | interrupteur | pastille on/off iOS |
+| `custom:jma-cover-card` | volet | Ouvrir / Stop / Fermer + position |
+| `custom:jma-thermostat-card` | climat | consigne ± + modes |
+| `custom:jma-media-card` | média | transport + volume |
+| `custom:jma-vacuum-card` | aspirateur | Start / Pause / Dock |
+| `custom:jma-scene-card` | scène / script | bouton d'activation |
+| `custom:jma-alarm-card` | alarme | Désarmer / Maison / Absent |
+
+> Commun à toutes : `name` · `icon` · `color` · `accent` · `hold_action` (`popup` \| `more-info` \| `none`).
+> Appui long = pop-up de contrôle détaillé.
 
 ## ✨ Fonctions
 - **Slider horizontal** : une barre dédiée en bas de la carte, glisse de gauche à droite pour régler la valeur (le reste de la carte reste cliquable pour le toggle).
