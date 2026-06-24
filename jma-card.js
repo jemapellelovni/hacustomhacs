@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.13.0";
+const VERSION = "0.14.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -223,7 +223,7 @@ class JmaBase extends HTMLElement {
   // clic simple -> onTap (pop-up par défaut) ; appui long -> fiche HA.
   // Les gestes démarrés sur un contrôle inline (slider/boutons/pastille) sont ignorés.
   _wireHold(el, onTap) {
-    const CTRL = ["slider", "cbtn", "pill", "step", "chip"];
+    const CTRL = ["slider", "cbtn", "pill", "step", "chip", "mprog", "covb"];
     let holdTimer, holdFired, skip, sx, sy;
     el.addEventListener("pointerdown", (e) => {
       skip = e.composedPath().some((n) => n.classList && CTRL.some((c) => n.classList.contains(c)));
@@ -465,10 +465,14 @@ class JmaThermostatCard extends JmaBase {
 class JmaMediaCard extends JmaBase {
   static getStubConfig() { return { entity: "media_player.example" }; }
   _build() {
-    this.shadowRoot.innerHTML = this._styleBlock() + CARD_WRAP_OPEN +
+    const extra = `.mprog{height:4px;border-radius:99px;background:rgba(255,255,255,.16);cursor:pointer;flex:none;position:relative;}
+      .mprog[hidden]{display:none;}
+      .mfill{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--jma-rose);width:0%;}`;
+    this.shadowRoot.innerHTML = this._styleBlock(extra) + CARD_WRAP_OPEN +
       `<div class="tile flat" id="tile"><div class="art"></div><div class="content">
          <div class="top"><div class="badge"><ha-icon class="ic"></ha-icon></div>
            <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
+         <div class="mprog" id="mprog" hidden><div class="mfill" id="mfill"></div></div>
          <div class="btnrow">
            <button class="cbtn" data-a="media_previous_track"><ha-icon icon="mdi:skip-previous"></ha-icon></button>
            <button class="cbtn accent" data-a="media_play_pause"><ha-icon class="pp" icon="mdi:play-pause"></ha-icon></button>
@@ -479,6 +483,13 @@ class JmaMediaCard extends JmaBase {
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
       b.addEventListener("click", () => this._call("media_player", b.dataset.a, { entity_id: this._config.entity }))
     );
+    this.shadowRoot.getElementById("mprog").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const a = this._s && this._s.attributes; if (!a || !a.media_duration) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      this._call("media_player", "media_seek", { entity_id: this._config.entity, seek_position: Math.round(ratio * a.media_duration) });
+    });
     this._sl = jmaSlider({
       icon: "mdi:volume-high", fmt: (v) => v + "%",
       onCommit: (v) => this._call("media_player", "volume_set", { entity_id: this._config.entity, volume_level: v / 100 }),
@@ -500,12 +511,29 @@ class JmaMediaCard extends JmaBase {
     this._dim(tile, s);
     if (a.volume_level != null) { this._sl.hidden = false; this._sl.setValue(Math.round(a.volume_level * 100)); }
     else this._sl.hidden = true;
+    // barre de progression
+    const mprog = this.shadowRoot.getElementById("mprog");
+    clearInterval(this._pt);
+    if (a.media_duration) {
+      mprog.hidden = false;
+      this._paintProg(a, playing);
+      if (playing) this._pt = setInterval(() => { const st = this._s; if (st) this._paintProg(st.attributes, true); }, 1000);
+    } else mprog.hidden = true;
     // pochette en fond
     const art = this.shadowRoot.querySelector(".art");
     const pic = a.entity_picture;
     if (pic && ["playing", "paused"].includes(s.state)) art.style.backgroundImage = `url("${pic}")`;
     else art.style.backgroundImage = "";
   }
+  _paintProg(a, playing) {
+    if (!a.media_duration) return;
+    let pos = a.media_position || 0;
+    if (playing && a.media_position_updated_at) pos += (Date.now() - new Date(a.media_position_updated_at).getTime()) / 1000;
+    pos = Math.max(0, Math.min(a.media_duration, pos));
+    const f = this.shadowRoot.getElementById("mfill");
+    if (f) f.style.width = (pos / a.media_duration) * 100 + "%";
+  }
+  disconnectedCallback() { clearInterval(this._pt); }
 }
 
 // =============================================================================
@@ -1965,6 +1993,92 @@ class JmaEnergyCard extends HTMLElement {
 customElements.define("jma-energy-card", JmaEnergyCard);
 
 // =============================================================================
+//  🌤️ MÉTÉO
+// =============================================================================
+const WEATHER_ICON = {
+  "clear-night": "mdi:weather-night", cloudy: "mdi:weather-cloudy", fog: "mdi:weather-fog",
+  hail: "mdi:weather-hail", lightning: "mdi:weather-lightning", "lightning-rainy": "mdi:weather-lightning-rainy",
+  partlycloudy: "mdi:weather-partly-cloudy", pouring: "mdi:weather-pouring", rainy: "mdi:weather-rainy",
+  snowy: "mdi:weather-snowy", "snowy-rainy": "mdi:weather-snowy-rainy", sunny: "mdi:weather-sunny",
+  windy: "mdi:weather-windy", "windy-variant": "mdi:weather-windy-variant", exceptional: "mdi:weather-cloudy-alert",
+};
+const WEATHER_FR = {
+  "clear-night": "Nuit claire", cloudy: "Nuageux", fog: "Brouillard", hail: "Grêle", lightning: "Orage",
+  "lightning-rainy": "Orage pluvieux", partlycloudy: "Partiellement nuageux", pouring: "Fortes averses",
+  rainy: "Pluvieux", snowy: "Neige", "snowy-rainy": "Neige fondue", sunny: "Ensoleillé",
+  windy: "Venteux", "windy-variant": "Venteux", exceptional: "Exceptionnel",
+};
+class JmaWeatherCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, show_forecast: true, days: 5, ...c }; if (!c.entity) throw new Error("météo : 'entity' requis"); }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { entity: "weather.home" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  get _s() { return this._hass.states[this._config.entity]; }
+  set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._config.show_forecast && (first || this._fcStale())) this._loadForecast(); }
+  _fcStale() { return !this._fcAt || Date.now() - this._fcAt > 1800000; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .top{align-items:center;}
+        .wicon{width:46px;height:46px;flex:none;display:flex;align-items:center;justify-content:center;}
+        .wicon ha-icon{--mdc-icon-size:40px;color:var(--jma-beige);}
+        .wtemp{font-weight:800;font-size:1.7rem;letter-spacing:-1px;flex:none;}
+        .fc{display:flex;justify-content:space-between;gap:4px;margin-top:2px;}
+        .fcd{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:0;}
+        .fcd .d{font-size:.62rem;opacity:.6;text-transform:capitalize;}
+        .fcd ha-icon{--mdc-icon-size:20px;color:var(--jma-beige);}
+        .fcd .mx{font-size:.72rem;font-weight:700;} .fcd .mn{font-size:.66rem;opacity:.55;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
+        <div class="top"><div class="wicon"><ha-icon id="ic"></ha-icon></div>
+          <div class="meta"><div class="name" id="cond"></div><div class="sub" id="sub"></div></div>
+          <div class="wtemp" id="temp">—</div></div>
+        <div class="fc" id="fc"></div>
+      </div></div></ha-card>`;
+    this.shadowRoot.getElementById("tile").addEventListener("click", () =>
+      this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: this._config.entity } })));
+  }
+  _update() {
+    const s = this._s; if (!s) return;
+    const a = s.attributes;
+    this.shadowRoot.getElementById("ic").setAttribute("icon", WEATHER_ICON[s.state] || "mdi:weather-cloudy");
+    this.shadowRoot.getElementById("cond").textContent = this._config.name || WEATHER_FR[s.state] || s.state;
+    this.shadowRoot.getElementById("temp").textContent = a.temperature != null ? Math.round(a.temperature) + "°" : "—";
+    const bits = [];
+    if (a.humidity != null) bits.push("💧 " + a.humidity + "%");
+    if (a.wind_speed != null) bits.push("💨 " + Math.round(a.wind_speed) + " " + (a.wind_speed_unit || "km/h"));
+    if (a.uv_index != null) bits.push("☀️ UV " + a.uv_index);
+    this.shadowRoot.getElementById("sub").textContent = bits.join(" · ");
+  }
+  async _loadForecast() {
+    this._fcAt = Date.now();
+    try {
+      const r = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts",
+        service_data: { type: "daily" }, target: { entity_id: this._config.entity }, return_response: true });
+      const resp = r && r.response && r.response[this._config.entity];
+      this._renderForecast((resp && resp.forecast) || []);
+    } catch (e) { this._renderForecast([]); }
+  }
+  _renderForecast(fc) {
+    const host = this.shadowRoot.getElementById("fc"); if (!host) return;
+    host.innerHTML = "";
+    const dn = ["dim", "lun", "mar", "mer", "jeu", "ven", "sam"];
+    fc.slice(0, this._config.days || 5).forEach((f) => {
+      const d = new Date(f.datetime);
+      const el = document.createElement("div"); el.className = "fcd";
+      el.innerHTML = `<span class="d">${isNaN(d) ? "" : dn[d.getDay()]}</span>` +
+        `<ha-icon icon="${WEATHER_ICON[f.condition] || "mdi:weather-cloudy"}"></ha-icon>` +
+        `<span class="mx">${f.temperature != null ? Math.round(f.temperature) + "°" : ""}</span>` +
+        `<span class="mn">${f.templow != null ? Math.round(f.templow) + "°" : ""}</span>`;
+      host.appendChild(el);
+    });
+  }
+}
+customElements.define("jma-weather-card", JmaWeatherCard);
+
+// =============================================================================
 //  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
 // =============================================================================
 const ED_LABELS = {
@@ -1983,6 +2097,7 @@ const ED_LABELS = {
   persons: "Personnes", battery_entities: "Capteurs batterie (ordre des personnes)",
   geocode_entities: "Capteurs adresse (ordre des personnes)", distance_entities: "Capteurs distance (ordre des personnes)",
   entities: "Calendriers", days: "Jours", max: "Nb max d'événements", time: "Heure de sortie",
+  show_forecast: "Afficher les prévisions",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -2006,6 +2121,9 @@ function jmaEditorSchema(type) {
   if (t === "custom:jma-energy-card") return [
     txt("title"), ent("production_entity", "sensor"), ent("grid_entity", "sensor"), ent("consumption_entity", "sensor"),
     txt("grid_color"), txt("color"), txt("accent")];
+  if (t === "custom:jma-weather-card") return [
+    ent("entity", "weather", false, true), txt("name"),
+    { name: "show_forecast", selector: { boolean: {} } }, num("days", 1, 7), txt("color"), txt("accent")];
   if (t === "custom:jma-camera-card") return [
     ent("entity", "camera", false, true), txt("name"), { name: "icon", selector: { icon: {} } },
     ent("occupancy_entity", "binary_sensor"), ent("person_count_entity", "sensor"), txt("color"), txt("accent")];
@@ -2248,6 +2366,7 @@ REG("jma-camera-card", "JMA Caméra", "Flux caméra + présence/REC, pop-up agra
 REG("jma-presence-card", "JMA Présence", "Avatars présents/absents (personnes).");
 REG("jma-agenda-card", "JMA Agenda", "Événements calendrier, nb de jours configurable.");
 REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solaire dominant.");
+REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jour.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
