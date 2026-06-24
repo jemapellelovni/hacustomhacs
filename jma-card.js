@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.37.1";
+const VERSION = "0.37.2";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3724,17 +3724,17 @@ class JmaScreensaverCard extends HTMLElement {
       .ss-pill.dom{opacity:1;transform:scale(1.08);font-weight:800;}
       .ss-pill.sun.dom{background:rgba(248,165,194,.16);border-color:rgba(248,165,194,.5);box-shadow:0 0 5vw rgba(248,165,194,.22);}
       .ss-pill.bolt.dom{background:rgba(91,155,255,.16);border-color:rgba(91,155,255,.5);box-shadow:0 0 5vw rgba(91,155,255,.22);}
-      .ss-agenda{display:flex;flex-direction:column;gap:1.1vh;margin-top:1.8vh;width:60vw;max-width:90vw;}
-      .ss-ev{display:flex;align-items:center;gap:2vw;background:linear-gradient(100deg,rgba(255,255,255,.08),rgba(255,255,255,.035));
-        border:1px solid rgba(255,255,255,.08);border-radius:2vw;padding:1.3vh 2.2vw;text-align:left;backdrop-filter:blur(6px);}
-      .ss-ev .day{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:8.5vw;height:7vw;line-height:1;flex:none;
-        background:rgba(248,165,194,.14);border-radius:1.4vw;}
-      .ss-ev .day .dn{font-size:1.35vw;font-weight:700;color:#f7b6cb;text-transform:uppercase;letter-spacing:.14vw;}
-      .ss-ev .day .dd{font-size:2.9vw;font-weight:800;margin-top:.2vh;}
-      .ss-ev .info{display:flex;flex-direction:column;min-width:0;flex:1;gap:.3vh;}
-      .ss-ev .info .ti{font-size:2.2vw;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-      .ss-ev .info .hr{font-size:1.7vw;opacity:.5;display:inline-flex;align-items:center;gap:.6vw;}
-      .ss-empty{font-size:2vw;opacity:.4;}
+      .ss-agenda{position:absolute;left:2.6vw;bottom:2.8vh;display:flex;flex-direction:column;gap:.7vh;width:33vw;max-width:44vw;z-index:2;}
+      .ss-ev{display:flex;align-items:center;gap:1.2vw;background:linear-gradient(100deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+        border:1px solid rgba(255,255,255,.07);border-radius:1.2vw;padding:.7vh 1.2vw;text-align:left;}
+      .ss-ev .day{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:5.4vw;height:4.8vw;line-height:1;flex:none;
+        background:rgba(248,165,194,.14);border-radius:.9vw;}
+      .ss-ev .day .dn{font-size:.92vw;font-weight:700;color:#f7b6cb;text-transform:uppercase;letter-spacing:.08vw;}
+      .ss-ev .day .dd{font-size:1.9vw;font-weight:800;margin-top:.1vh;}
+      .ss-ev .info{display:flex;flex-direction:column;min-width:0;flex:1;}
+      .ss-ev .info .ti{font-size:1.4vw;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ss-ev .info .hr{font-size:1.05vw;opacity:.5;display:inline-flex;align-items:center;gap:.5vw;}
+      .ss-empty{font-size:1.4vw;opacity:.4;}
       .ss-actions{position:absolute;top:3.2vh;right:3vw;display:flex;flex-direction:column;gap:1.3vh;align-items:flex-end;}
       .ss-act{display:inline-flex;align-items:center;gap:1vw;padding:1.3vh 2.2vw;border-radius:99px;cursor:pointer;
         background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#fff;font-size:1.9vw;font-weight:700;transition:transform .1s,background .3s,border-color .3s;}
@@ -3749,9 +3749,9 @@ class JmaScreensaverCard extends HTMLElement {
       `<div class="ss-wx" id="jcw"></div>` +
       `<div class="ss-sep" id="jcsep" style="display:none"></div>` +
       `<div class="ss-edom" id="jcedom" style="display:none"></div>` +
-      `<div class="ss-energy" id="jce"></div>` +
-      `<div class="ss-agenda" id="jca"></div>`;
-    o.appendChild(st); o.appendChild(col);
+      `<div class="ss-energy" id="jce"></div>`;
+    const ag = document.createElement("div"); ag.className = "ss-agenda"; ag.id = "jca";
+    o.appendChild(st); o.appendChild(col); o.appendChild(ag);
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
     // boutons d'action (haut-droite) : ne ferment PAS la veille
     const actions = this._config.actions || [];
@@ -3811,7 +3811,7 @@ class JmaScreensaverCard extends HTMLElement {
         } else dom.style.display = "none";
       }
       const sep = this._ovl.querySelector("#jcsep");
-      if (sep) sep.style.display = ((haveSol || haveGrid) || (this._events && this._events.length)) ? "block" : "none";
+      if (sep) sep.style.display = (haveSol || haveGrid) ? "block" : "none";
     }
   }
   async _fetchAgenda() {
@@ -3833,12 +3833,11 @@ class JmaScreensaverCard extends HTMLElement {
       const ed = new Date(e.d.getFullYear(), e.d.getMonth(), e.d.getDate());
       const diff = Math.round((ed - today) / 86400000);
       const lbl = diff === 0 ? "AUJ" : diff === 1 ? "DEM" : dn[e.d.getDay()];
-      const hr = e.allday ? `<ha-icon icon="mdi:white-balance-sunny" style="--mdc-icon-size:1.8vw"></ha-icon>Journée` : `<ha-icon icon="mdi:clock-outline" style="--mdc-icon-size:1.8vw"></ha-icon>${("0" + e.d.getHours()).slice(-2)}:${("0" + e.d.getMinutes()).slice(-2)}`;
+      const hr = e.allday ? `<ha-icon icon="mdi:white-balance-sunny" style="--mdc-icon-size:1.3vw"></ha-icon>Journée` : `<ha-icon icon="mdi:clock-outline" style="--mdc-icon-size:1.3vw"></ha-icon>${("0" + e.d.getHours()).slice(-2)}:${("0" + e.d.getMinutes()).slice(-2)}`;
       return `<div class="ss-ev">` +
         `<div class="day"><span class="dn">${lbl}</span><span class="dd">${e.d.getDate()}</span></div>` +
         `<div class="info"><span class="ti">${e.t}</span><span class="hr">${hr}</span></div></div>`;
     }).join("");
-    const sep = this._ovl.querySelector("#jcsep"); if (sep) sep.style.display = "block";
   }
   _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); this._idle = 0; this._actWrap = null; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
