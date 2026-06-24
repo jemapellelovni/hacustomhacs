@@ -15,7 +15,11 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.34.0";
+const VERSION = "0.34.1";
+// enregistrement idempotent : évite qu'un double-chargement de la ressource
+// (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
+const _def = customElements.define.bind(customElements);
+const jmaDef = (n, c) => { try { if (!customElements.get(n)) _def(n, c); } catch (e) {} };
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -897,10 +901,10 @@ class JmaAlarmCard extends JmaBase {
   }
 }
 
-customElements.define("jma-light-card", JmaLightCard);
-customElements.define("jma-switch-card", JmaSwitchCard);
-customElements.define("jma-cover-card", JmaCoverCard);
-customElements.define("jma-thermostat-card", JmaThermostatCard);
+jmaDef("jma-light-card", JmaLightCard);
+jmaDef("jma-switch-card", JmaSwitchCard);
+jmaDef("jma-cover-card", JmaCoverCard);
+jmaDef("jma-thermostat-card", JmaThermostatCard);
 
 // =============================================================================
 //  🎯 THERMOSTAT CADRAN (façon Nest) — anneau circulaire, glisser pour régler
@@ -990,11 +994,11 @@ class JmaClimateDialCard extends JmaBase {
     wrap.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.dataset.m === s.state));
   }
 }
-customElements.define("jma-climate-dial-card", JmaClimateDialCard);
-customElements.define("jma-media-card", JmaMediaCard);
-customElements.define("jma-vacuum-card", JmaVacuumCard);
-customElements.define("jma-scene-card", JmaSceneCard);
-customElements.define("jma-alarm-card", JmaAlarmCard);
+jmaDef("jma-climate-dial-card", JmaClimateDialCard);
+jmaDef("jma-media-card", JmaMediaCard);
+jmaDef("jma-vacuum-card", JmaVacuumCard);
+jmaDef("jma-scene-card", JmaSceneCard);
+jmaDef("jma-alarm-card", JmaAlarmCard);
 
 // =============================================================================
 //  🎚️ CARTE UNIVERSELLE (auto) — slider horizontal + pop-up
@@ -1216,7 +1220,7 @@ class JmaCard extends HTMLElement {
   }
   _call(domain, service, data) { if (this._hass) this._hass.callService(domain, service, data); }
 }
-customElements.define("jma-card", JmaCard);
+jmaDef("jma-card", JmaCard);
 
 // =============================================================================
 //  POP-UP CUSTOM (bottom-sheet iOS) — partagé par toutes les cartes
@@ -2192,7 +2196,7 @@ class JmaPopup extends HTMLElement {
   _hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
   _call(domain, service, data) { if (this._hass) this._hass.callService(domain, service, data); }
 }
-customElements.define("jma-card-popup", JmaPopup);
+jmaDef("jma-card-popup", JmaPopup);
 
 // =============================================================================
 //  🚗 VOITURE ÉLECTRIQUE (Zoé) — batterie, autonomie, charge
@@ -2282,7 +2286,7 @@ class JmaEvCard extends HTMLElement {
     this.shadowRoot.getElementById("ic").style.color = climOn ? "#40c4ff" : "";
   }
 }
-customElements.define("jma-ev-card", JmaEvCard);
+jmaDef("jma-ev-card", JmaEvCard);
 
 // =============================================================================
 //  🗑️ POUBELLE — rappel par jour de la semaine (0=dim … 3=mer)
@@ -2357,7 +2361,7 @@ class JmaBinCard extends HTMLElement {
     }
   }
 }
-customElements.define("jma-bin-card", JmaBinCard);
+jmaDef("jma-bin-card", JmaBinCard);
 
 // =============================================================================
 //  📷 CAMÉRA
@@ -2413,7 +2417,7 @@ class JmaCameraCard extends HTMLElement {
     this.shadowRoot.getElementById("pc").textContent = pcE ? pcE.state : "•";
   }
 }
-customElements.define("jma-camera-card", JmaCameraCard);
+jmaDef("jma-camera-card", JmaCameraCard);
 
 // =============================================================================
 //  📹 MULTI-CAMÉRAS (mosaïque)
@@ -2468,7 +2472,7 @@ class JmaCamerasCard extends HTMLElement {
     });
   }
 }
-customElements.define("jma-cameras-card", JmaCamerasCard);
+jmaDef("jma-cameras-card", JmaCamerasCard);
 
 // =============================================================================
 //  🔊 SONOS MULTI-ROOM — lecture du groupe + grouper/dégrouper + volume/pièce
@@ -2546,7 +2550,7 @@ class JmaSonosCard extends HTMLElement {
     else this._gsl.hidden = true;
   }
 }
-customElements.define("jma-sonos-card", JmaSonosCard);
+jmaDef("jma-sonos-card", JmaSonosCard);
 
 // =============================================================================
 //  ✝️ SAINT DU JOUR (calendrier français intégré)
@@ -2596,7 +2600,7 @@ class JmaSaintCard extends HTMLElement {
     this.shadowRoot.getElementById("date").textContent = days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
   }
 }
-customElements.define("jma-saint-card", JmaSaintCard);
+jmaDef("jma-saint-card", JmaSaintCard);
 
 // =============================================================================
 //  🧑‍🤝‍🧑 PRÉSENCE (avatars)
@@ -2680,7 +2684,7 @@ class JmaPresenceCard extends HTMLElement {
     });
   }
 }
-customElements.define("jma-presence-card", JmaPresenceCard);
+jmaDef("jma-presence-card", JmaPresenceCard);
 
 // =============================================================================
 //  📅 AGENDA (calendriers, nb de jours configurable)
@@ -2758,7 +2762,7 @@ class JmaAgendaCard extends HTMLElement {
     if (evs.length > max) { const m = document.createElement("div"); m.className = "more"; m.textContent = "+ " + (evs.length - max) + " autres…"; list.appendChild(m); }
   }
 }
-customElements.define("jma-agenda-card", JmaAgendaCard);
+jmaDef("jma-agenda-card", JmaAgendaCard);
 
 // =============================================================================
 //  ⚡ ÉNERGIE — conso & production (bleu EDF / rose solaire dominant)
@@ -2838,7 +2842,7 @@ class JmaEnergyCard extends HTMLElement {
     }
   }
 }
-customElements.define("jma-energy-card", JmaEnergyCard);
+jmaDef("jma-energy-card", JmaEnergyCard);
 
 // =============================================================================
 //  🌤️ MÉTÉO
@@ -2924,7 +2928,7 @@ class JmaWeatherCard extends HTMLElement {
     });
   }
 }
-customElements.define("jma-weather-card", JmaWeatherCard);
+jmaDef("jma-weather-card", JmaWeatherCard);
 
 // =============================================================================
 //  🔢 CAPTEUR — valeur + mini-graphe sur la tuile
@@ -2974,7 +2978,7 @@ class JmaSensorCard extends HTMLElement {
   }
   _spark() { this._gAt = Date.now(); jmaSparkline(this.shadowRoot.getElementById("spk"), this._hass, this._config.entity, this._config.hours, this._config.color); }
 }
-customElements.define("jma-sensor-card", JmaSensorCard);
+jmaDef("jma-sensor-card", JmaSensorCard);
 
 // =============================================================================
 //  🏠 PIÈCE — regroupe plusieurs entités, chacune ouvre son pop-up
@@ -3131,7 +3135,7 @@ class JmaRoomCard extends HTMLElement {
     const sum = this.shadowRoot.getElementById("sum"); if (sum) sum.textContent = parts.join(" · ");
   }
 }
-customElements.define("jma-room-card", JmaRoomCard);
+jmaDef("jma-room-card", JmaRoomCard);
 
 // =============================================================================
 //  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
@@ -3285,7 +3289,7 @@ class JmaCardEditor extends HTMLElement {
       mk("icon", "Icône (mdi:…)"), mk("color", "Couleur d'accent", "#f8a5c2"), mk("accent", "Couleur secondaire", "#DEC198"));
   }
 }
-customElements.define("jma-card-editor", JmaCardEditor);
+jmaDef("jma-card-editor", JmaCardEditor);
 
 // =============================================================================
 //  TOASTS (notifications popup iOS)
@@ -3435,7 +3439,7 @@ class JmaNotifyCard extends HTMLElement {
     this._ever = true;
   }
 }
-customElements.define("jma-notify-card", JmaNotifyCard);
+jmaDef("jma-notify-card", JmaNotifyCard);
 
 // =============================================================================
 //  ☀️ ÉNERGIE DU JOUR (kWh + coût € EDF)
@@ -3500,7 +3504,7 @@ class JmaEnergyTodayCard extends HTMLElement {
     $("sub").textContent = prod != null ? "Solaire vs EDF aujourd'hui" : "Consommation du jour";
   }
 }
-customElements.define("jma-energy-today-card", JmaEnergyTodayCard);
+jmaDef("jma-energy-today-card", JmaEnergyTodayCard);
 
 // =============================================================================
 //  ⭐ FAVORIS / LANCEUR
@@ -3555,7 +3559,7 @@ class JmaFavoritesCard extends HTMLElement {
     });
   }
 }
-customElements.define("jma-favorites-card", JmaFavoritesCard);
+jmaDef("jma-favorites-card", JmaFavoritesCard);
 
 // =============================================================================
 //  🛡️ SÉCURITÉ (alarme + caméras + ouvertures)
@@ -3626,7 +3630,7 @@ class JmaSecurityCard extends HTMLElement {
     });
   }
 }
-customElements.define("jma-security-card", JmaSecurityCard);
+jmaDef("jma-security-card", JmaSecurityCard);
 
 // =============================================================================
 //  🌙 MODE VEILLE (économiseur d'écran tablette)
@@ -3686,7 +3690,7 @@ class JmaScreensaverCard extends HTMLElement {
   }
   _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); this._idle = 0; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
-customElements.define("jma-screensaver-card", JmaScreensaverCard);
+jmaDef("jma-screensaver-card", JmaScreensaverCard);
 
 // =============================================================================
 window.customCards = window.customCards || [];
