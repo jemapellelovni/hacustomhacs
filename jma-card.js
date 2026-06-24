@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.12.0";
+const VERSION = "0.12.1";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1447,6 +1447,20 @@ class JmaPopup extends HTMLElement {
     body.appendChild(head);
     if (feat & 4) body.appendChild(this._slider("pos", "Position", a.current_position ?? 0, (x) => x + " %",
       (x) => this._call("cover", "set_cover_position", { entity_id: this._config.entity, position: x })));
+    if (feat & 4) {
+      const r = document.createElement("div"); r.className = "row";
+      r.innerHTML = `<div class="lbl"><span>Raccourcis</span></div><div class="chiprow"></div>`;
+      const wrap = r.querySelector(".chiprow");
+      const cur = a.current_position;
+      for (let p = 0; p <= 100; p += 10) {
+        const b = document.createElement("button");
+        b.className = "pchip" + (cur != null && Math.round(cur / 10) * 10 === p ? " on" : "");
+        b.textContent = p + "%";
+        b.addEventListener("click", () => this._call("cover", "set_cover_position", { entity_id: this._config.entity, position: p }));
+        wrap.appendChild(b);
+      }
+      body.appendChild(r);
+    }
     if (feat & 128) body.appendChild(this._slider("tilt", "Inclinaison", a.current_tilt_position ?? 0, (x) => x + " %",
       (x) => this._call("cover", "set_cover_tilt_position", { entity_id: this._config.entity, tilt_position: x })));
     const row = document.createElement("div");
