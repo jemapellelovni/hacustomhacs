@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.59.0";
+const VERSION = "0.59.1";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3182,7 +3182,7 @@ class JmaCalendarCard extends HTMLElement {
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};--cal-sheet:#fbf8f1;--cal-line:rgba(60,48,30,.1);}
       :host(.dark){--cal-sheet:#1d1d20;--cal-line:rgba(255,255,255,.1);}
-      .cal{display:flex;flex-direction:column;height:100%;gap:9px;padding:4px 2px;}
+      .cal{display:flex;flex-direction:column;height:100%;min-height:80vh;gap:9px;padding:4px 2px;}
       .calhead{display:flex;align-items:center;gap:9px;}
       .mtitle{font-weight:800;font-size:1.2rem;text-transform:capitalize;flex:1;letter-spacing:-.2px;}
       .cbtn{height:34px;min-width:34px;border-radius:11px;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
