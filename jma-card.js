@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.9.0";
+const VERSION = "0.10.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -29,6 +29,26 @@ const ALARM_FR = { disarmed: "Désarmé", armed_away: "Absent", armed_home: "Mai
   armed_vacation: "Vacances", arming: "Armement…", pending: "Délai…", triggered: "⚠ Déclenchée" };
 const VACUUM_FR = { cleaning: "Nettoyage", docked: "À la base", idle: "Inactif", paused: "En pause",
   returning: "Retour base", error: "Erreur" };
+
+function jmaSince(iso) {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms) || ms < 0) return "";
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "à l'instant";
+  if (m < 60) return m + " min";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + " h" + (m % 60 ? " " + (m % 60) : "");
+  const d = Math.floor(h / 24);
+  return d + " j" + (h % 24 ? " " + (h % 24) + " h" : "");
+}
+function jmaFmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m"; }
+function jmaBatIcon(p, charging) {
+  if (p == null) return "mdi:battery-unknown";
+  if (charging) return "mdi:battery-charging";
+  const r = Math.round(p / 10) * 10;
+  return r >= 100 ? "mdi:battery" : r <= 5 ? "mdi:battery-alert" : "mdi:battery-" + r;
+}
 
 // =============================================================================
 //  STYLE & HELPERS PARTAGÉS
@@ -997,7 +1017,7 @@ class JmaPopup extends HTMLElement {
   }
   _popupIcon() {
     return { light: "mdi:lightbulb", climate: "mdi:thermostat", media_player: "mdi:speaker", cover: "mdi:window-shutter",
-      alarm_control_panel: "mdi:shield-home", vacuum: "mdi:robot-vacuum", camera: "mdi:cctv" }[this._domain()] || "mdi:tune";
+      alarm_control_panel: "mdi:shield-home", vacuum: "mdi:robot-vacuum", camera: "mdi:cctv", person: "mdi:account" }[this._domain()] || "mdi:tune";
   }
   _headSub(s) {
     const d = this._domain();
@@ -1006,6 +1026,7 @@ class JmaPopup extends HTMLElement {
     if (d === "alarm_control_panel") return ALARM_FR[s.state] || s.state;
     if (d === "vacuum") return VACUUM_FR[s.state] || s.state;
     if (d === "camera") return s.state === "recording" ? "Enregistre" : s.state;
+    if (d === "person" || d === "device_tracker") return (s.state === "home" ? "Présent" : s.state === "not_home" ? "Absent" : s.state) + " · " + jmaSince(s.last_changed);
     return s.state === "on" ? "Allumé" : s.state === "off" ? "Éteint" : s.state;
   }
   _renderBody() {
@@ -1021,6 +1042,7 @@ class JmaPopup extends HTMLElement {
     if (d === "alarm_control_panel") return this._alarmBody(body);
     if (d === "vacuum") return this._vacuumBody(body);
     if (d === "camera") return this._cameraBody(body);
+    if (d === "person" || d === "device_tracker") return this._personBody(body);
     return this._toggleBody(body);
   }
   async _graph(host, entities, hours) {
@@ -1221,6 +1243,39 @@ class JmaPopup extends HTMLElement {
     body.appendChild(kv);
     const gh = document.createElement("div"); gh.className = "row"; body.appendChild(gh);
     this._graph(gh, [this._config.production_entity, this._config.grid_entity, this._config.consumption_entity], 12);
+  }
+  _personBody(body) {
+    const s = this._s, a = s.attributes;
+    const cells = [["État", s.state === "home" ? "Présent" : s.state === "not_home" ? "Absent" : s.state],
+      ["Depuis", jmaSince(s.last_changed)]];
+    const batE = this._config.battery_entity && this._hass.states[this._config.battery_entity];
+    if (batE && !isNaN(parseFloat(batE.state))) {
+      const chg = this._config.battery_state_entity && this._hass.states[this._config.battery_state_entity];
+      const charging = chg && /charg/i.test(chg.state) && !/not/i.test(chg.state);
+      cells.push(["Batterie", Math.round(parseFloat(batE.state)) + " %" + (charging ? " ⚡" : "")]);
+    }
+    const distE = this._config.distance_entity && this._hass.states[this._config.distance_entity];
+    if (distE && !isNaN(parseFloat(distE.state))) cells.push(["Distance", jmaFmtDist(parseFloat(distE.state))]);
+    const kv = document.createElement("div"); kv.className = "row kv";
+    kv.innerHTML = cells.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    body.appendChild(kv);
+    const geo = this._config.geocode_entity && this._hass.states[this._config.geocode_entity];
+    const addr = geo && geo.state && !["unknown", "unavailable", ""].includes(geo.state) ? geo.state : null;
+    if (addr) {
+      const ar = document.createElement("div"); ar.className = "row";
+      ar.innerHTML = `<div class="lbl"><span>Adresse</span></div><div style="font-size:.9rem;font-weight:600;white-space:pre-line;">${addr}</div>`;
+      body.appendChild(ar);
+    }
+    if (a.latitude != null) { const mh = document.createElement("div"); mh.className = "row"; body.appendChild(mh); this._map(mh, [this._config.entity]); }
+  }
+  async _map(host, entities) {
+    try {
+      if (!window.loadCardHelpers) return;
+      const h = await window.loadCardHelpers();
+      const el = h.createCardElement({ type: "map", entities, aspect_ratio: "16:9" });
+      el.hass = this._hass; el.classList.add("graph");
+      host.appendChild(el); (this._graphs = this._graphs || []).push(el);
+    } catch (e) {}
   }
   _cameraBody(body) {
     const s = this._s;
@@ -1509,27 +1564,49 @@ class JmaPresenceCard extends HTMLElement {
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; this._persons = c.persons || c.entities || (c.entity ? [c.entity] : []); }
   getCardSize() { return 1; }
   static getStubConfig() { return { persons: ["person.example"] }; }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .ppl{display:flex;gap:12px;flex-wrap:wrap;justify-content:space-around;width:100%;}
-        .p{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
-        .av{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.12);background-size:cover;background-position:center;
+        .ppl{display:flex;gap:14px;flex-wrap:wrap;justify-content:space-around;width:100%;}
+        .p{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;width:96px;}
+        .av{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.12);background-size:cover;background-position:center;
           position:relative;border:2px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;
-          font-weight:800;font-size:1.1rem;color:#fff;}
+          font-weight:800;font-size:1.15rem;color:#fff;}
         .p.home .av{border-color:#69f0ae;}
-        .p.away .av{filter:grayscale(.7) brightness(.85);opacity:.65;}
+        .p.away .av{filter:grayscale(.7) brightness(.85);opacity:.7;}
         .b2{position:absolute;right:-2px;bottom:-2px;width:18px;height:18px;border-radius:50%;border:2px solid var(--jma-dark);
           display:flex;align-items:center;justify-content:center;}
         .p.home .b2{background:#69f0ae;} .p.away .b2{background:#8a8a8e;}
         .b2 ha-icon{--mdc-icon-size:11px;color:#0a0a0b;}
-        .pn{font-weight:600;font-size:.78rem;} .ps{font-size:.66rem;opacity:.6;}
+        .pn{font-weight:600;font-size:.8rem;} .ps{font-size:.66rem;opacity:.62;text-align:center;line-height:1.2;}
+        .pbat{display:flex;align-items:center;gap:2px;font-size:.66rem;font-weight:700;opacity:.85;}
+        .pbat ha-icon{--mdc-icon-size:15px;}
+        .pbat.low{color:#ff5252;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
         <div class="ppl" id="ppl"></div>
       </div></div></ha-card>`;
+  }
+  _derive(s) {
+    const src = (s.attributes.source || (s.attributes.device_trackers || [])[0] || "").split(".")[1];
+    const ov = (this._config.sensors && this._config.sensors[s.entity_id]) || {};
+    return {
+      entity: s.entity_id,
+      battery_entity: ov.battery || (src ? "sensor." + src + "_battery_level" : null),
+      battery_state_entity: ov.battery_state || (src ? "sensor." + src + "_battery_state" : null),
+      geocode_entity: ov.geocode || (src ? "sensor." + src + "_geocoded_location" : null),
+      distance_entity: ov.distance || (src ? "sensor." + src + "_distance" : null),
+    };
+  }
+  _openPopup(cfg) {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { color: this._config.color, accent: this._config.accent, dark: this._config.dark, name: cfg.name, ...cfg };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
   }
   _update() {
     const ppl = this.shadowRoot.getElementById("ppl"); ppl.innerHTML = "";
@@ -1539,11 +1616,18 @@ class JmaPresenceCard extends HTMLElement {
       const name = (this._config.names && this._config.names[eid]) || s.attributes.friendly_name || eid.split(".")[1];
       const pic = s.attributes.entity_picture;
       const zone = home ? "Présent" : (s.state === "not_home" ? "Absent" : s.state);
+      const dur = jmaSince(s.last_changed);
+      const der = this._derive(s);
+      const batS = der.battery_entity && this._hass.states[der.battery_entity];
+      const bat = batS && !isNaN(parseFloat(batS.state)) ? Math.round(parseFloat(batS.state)) : null;
+      const chgS = der.battery_state_entity && this._hass.states[der.battery_state_entity];
+      const charging = chgS && /charg/i.test(chgS.state) && !/not/i.test(chgS.state);
       const el = document.createElement("div"); el.className = "p " + (home ? "home" : "away");
       el.innerHTML = `<div class="av" style="${pic ? `background-image:url('${pic}')` : ""}">${pic ? "" : name.slice(0, 1).toUpperCase()}` +
         `<span class="b2"><ha-icon icon="${home ? "mdi:check" : "mdi:home-export-outline"}"></ha-icon></span></div>` +
-        `<div class="pn">${name}</div><div class="ps">${zone}</div>`;
-      el.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: eid } })));
+        `<div class="pn">${name}</div><div class="ps">${zone} · ${dur}</div>` +
+        (bat != null ? `<div class="pbat${bat <= 20 ? " low" : ""}"><ha-icon icon="${jmaBatIcon(bat, charging)}"></ha-icon>${bat}%</div>` : "");
+      el.addEventListener("click", () => this._openPopup({ ...der, name }));
       ppl.appendChild(el);
     });
   }
