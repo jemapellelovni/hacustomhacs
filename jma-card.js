@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.42.0";
+const VERSION = "0.43.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -2815,6 +2815,7 @@ class JmaEnergyCard extends HTMLElement {
         <div class="spark" id="espk" style="height:48px;"></div>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
+    if (this._config.compact) ["espk", "ecap"].forEach((id) => { const e = this.shadowRoot.getElementById(id); if (e) e.style.display = "none"; });
   }
   _openPopup() {
     if (this._popup) return;
@@ -2846,7 +2847,7 @@ class JmaEnergyCard extends HTMLElement {
     const win = this._config.spark_hours || 12;
     const ew = this.shadowRoot.getElementById("ewin");
     if (ew) ew.textContent = win >= 24 ? "sur " + Math.round(win / 24) + " j" : "sur " + win + " h";
-    if ((this._config.production_entity || this._config.grid_entity) && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
+    if (!this._config.compact && (this._config.production_entity || this._config.grid_entity) && (!this._sparkAt || Date.now() - this._sparkAt > 300000)) {
       this._sparkAt = Date.now();
       jmaSparklineMulti(this.shadowRoot.getElementById("espk"), this._hass, [
         { entity: this._config.production_entity, color: this._config.color, fill: true },
@@ -2857,7 +2858,7 @@ class JmaEnergyCard extends HTMLElement {
     const eday = this.shadowRoot.getElementById("eday");
     if (eday) {
       const pT = this._num("production_today_entity"), gT = this._num("grid_today_entity");
-      if (pT != null || gT != null) {
+      if (!this._config.compact && (pT != null || gT != null)) {
         eday.hidden = false;
         const sp = Math.max(0, pT || 0), gr = Math.max(0, gT || 0), tot = Math.max(sp + gr, 0.001);
         const k = (v) => (Math.round(v * 10) / 10).toString().replace(".", ",") + " kWh";
@@ -3076,8 +3077,12 @@ class JmaRoomCard extends HTMLElement {
         .cv{font-size:.65rem;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .c.glow.on>ha-icon{animation:jma-glow 2.6s ease-in-out infinite;}
         @keyframes jma-glow{0%,100%{opacity:.85;}50%{opacity:1;filter:drop-shadow(0 0 6px rgba(255,255,255,.9));}}
+        .tile.room.compact{padding:9px 11px;gap:0;}
+        .tile.room.compact .content{gap:5px !important;}
+        .tile.room.compact .badge.rbig{width:32px;height:32px;}.tile.room.compact .badge.rbig ha-icon{--mdc-icon-size:19px;}
+        .tile.room.compact .name{font-size:.9rem;}
       </style>
-      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile room" id="tile"><div class="content" style="gap:9px;">
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile room${c.compact ? " compact" : ""}" id="tile"><div class="content" style="gap:9px;">
         <div class="rhead" id="rhead"><div class="badge rbig"><ha-icon icon="${c.icon}"></ha-icon></div>
           <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sum"></div></div>
           <div class="ramb" id="amb"></div></div>
@@ -3092,6 +3097,8 @@ class JmaRoomCard extends HTMLElement {
       this._chips.push({ el: b, role, entity, val: b.querySelector(".cv"), nm: b.querySelector(".cn"), ic: b.querySelector("ha-icon") });
     };
     this.shadowRoot.getElementById("rhead").addEventListener("click", () => this._openPopup(this._climate || this._media || this._lights[0]));
+    if (this._config.compact) { const g = this.shadowRoot.getElementById("cgrid"); if (g) g.style.display = "none"; }
+    else {
     if (this._lights.length) add("lights", null, "mdi:lightbulb-group", "Lumières", () => {
       const anyOn = this._lights.some((e) => { const s = this._st(e); return s && s.state === "on"; });
       this._call("homeassistant", anyOn ? "turn_off" : "turn_on", { entity_id: this._lights });
@@ -3105,6 +3112,7 @@ class JmaRoomCard extends HTMLElement {
       const icon = (a && a.icon) || DC_ICON[a && a.device_class] || { light: "mdi:lightbulb", switch: "mdi:power-socket-eu", sensor: "mdi:eye", binary_sensor: "mdi:checkbox-blank-circle", lock: "mdi:lock", fan: "mdi:fan" }[eid.split(".")[0]] || "mdi:circle";
       add("entity", eid, icon, this._short(eid), () => this._openPopup(eid));
     });
+    }
   }
   _badgeEl(icon, txt, cls) { return `<div class="pill2 ${cls || ""}"><ha-icon icon="${icon}"></ha-icon>${txt}</div>`; }
   _update() {
