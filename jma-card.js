@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.53.0";
+const VERSION = "0.54.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4166,7 +4166,7 @@ class JmaGroupCard extends HTMLElement {
   }
 }
 class JmaCoversCard extends JmaGroupCard {
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Volets", icon: "mdi:window-shutter", ...c }; this._DOMAIN = "cover"; this._KIND = "covers"; this._EXCLUDE = /(low[ _]?speed|vitesse[ _]?lente|basse[ _]?vitesse|tous[ _]?les[ _]?volets|_group\b)/i; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Volets", icon: "mdi:window-shutter", ...c }; this._DOMAIN = "cover"; this._KIND = "covers"; this._EXCLUDE = /(low[ _]?speed|vitesse[ _]?lente|basse[ _]?vitesse|tous[ _]?les[ _]?volets|_group\b)/i; this._TOP = c.top || ["cover.volet_salon", "cover.volet_cuisine", "cover.volet_chambre_pa", "cover.volet_dressing", "cover.volet_bureau", "cover.volet_chambre_1", "cover.volet_chambre_2"]; }
   static getStubConfig() { return { name: "Volets" }; }
   _update() {
     const list = this._list(); let open = 0;
