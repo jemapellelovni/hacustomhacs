@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.17.0";
+const VERSION = "0.18.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1874,11 +1874,11 @@ customElements.define("jma-cameras-card", JmaCamerasCard);
 // =============================================================================
 class JmaSonosCard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._sliders = {}; }
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Sonos", ...c }; this._spk = c.entities || []; }
-  getCardSize() { return 3; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Sonos", favorites: true, ...c }; this._spk = c.entities || []; }
+  getCardSize() { return 4; }
   static getStubConfig() { return { name: "Sonos", entities: ["media_player.salon"] }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._config.favorites && !this._favTried) this._loadFavorites(); if (this._popup) this._popup.hass = h; }
   _call(s, data) { this._hass.callService("media_player", s, data); }
   _master() {
     if (this._config.master && this._hass.states[this._config.master]) return this._config.master;
@@ -1895,41 +1895,75 @@ class JmaSonosCard extends HTMLElement {
     const c = this._config;
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .transport{display:flex;justify-content:center;gap:16px;align-items:center;margin:2px 0;}
-        .tbtn{width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);
-          color:var(--jma-text);display:flex;align-items:center;justify-content:center;}
-        .tbtn.big{width:50px;height:50px;background:var(--jma-rose);color:var(--jma-dark);}
-        .tbtn ha-icon{--mdc-icon-size:22px;}
-        .rooms{display:flex;flex-direction:column;gap:7px;margin-top:4px;}
-        .room{display:flex;align-items:center;gap:8px;}
-        .lk{width:30px;height:30px;border-radius:9px;border:none;cursor:pointer;flex:none;background:var(--jma-surf3);
+        .transport{display:flex;justify-content:center;gap:12px;align-items:center;margin:2px 0;}
+        .tbtn{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);
+          color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:background .2s;}
+        .tbtn.big{width:48px;height:48px;background:var(--jma-rose);color:var(--jma-dark);}
+        .tbtn.on{color:var(--jma-rose);} .tbtn ha-icon{--mdc-icon-size:20px;}
+        .favs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin;}
+        .favs[hidden]{display:none;}
+        .fav{flex:none;display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;border:none;cursor:pointer;
+          background:var(--jma-surf3);color:var(--jma-text);font-size:.72rem;font-weight:600;white-space:nowrap;max-width:140px;}
+        .fav ha-icon{--mdc-icon-size:15px;color:var(--jma-rose);flex:none;} .fav span{overflow:hidden;text-overflow:ellipsis;}
+        .ga{display:flex;gap:6px;}
+        .gab{flex:1;height:28px;border:none;border-radius:9px;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);
+          font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:4px;}
+        .gab ha-icon{--mdc-icon-size:15px;}
+        .rooms{display:flex;flex-direction:column;gap:7px;margin-top:2px;}
+        .room{display:flex;align-items:center;gap:7px;}
+        .lk,.mute{width:28px;height:28px;border-radius:8px;border:none;cursor:pointer;flex:none;background:var(--jma-surf3);
           color:var(--jma-icon);display:flex;align-items:center;justify-content:center;}
-        .lk.on{background:var(--jma-rose);color:var(--jma-dark);} .lk ha-icon{--mdc-icon-size:17px;}
+        .lk.on{background:var(--jma-rose);color:var(--jma-dark);} .lk ha-icon,.mute ha-icon{--mdc-icon-size:16px;}
         .lk.master{background:var(--jma-beige);color:var(--jma-dark);}
-        .rn{font-size:.74rem;font-weight:600;width:78px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .mute.on{color:#ff5252;}
+        .rn{font-size:.73rem;font-weight:600;width:70px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .room .slider{flex:1;height:26px;}
+        .sec{font-size:.62rem;opacity:.5;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="art"></div><div class="content">
         <div class="top"><div class="badge"><ha-icon class="ic" icon="mdi:speaker-multiple"></ha-icon></div>
           <div class="meta"><div class="name" id="nm">${c.name}</div><div class="sub" id="sub"></div></div></div>
         <div class="transport">
+          <button class="tbtn" id="shuffle" title="Aléatoire"><ha-icon icon="mdi:shuffle"></ha-icon></button>
           <button class="tbtn" data-a="media_previous_track"><ha-icon icon="mdi:skip-previous"></ha-icon></button>
           <button class="tbtn big" data-a="media_play_pause"><ha-icon class="pp" icon="mdi:play"></ha-icon></button>
           <button class="tbtn" data-a="media_next_track"><ha-icon icon="mdi:skip-next"></ha-icon></button>
+          <button class="tbtn" id="repeat" title="Répéter"><ha-icon class="ri" icon="mdi:repeat"></ha-icon></button>
+        </div>
+        <div class="favs" id="favs" hidden></div>
+        <div class="ga">
+          <button class="gab" id="groupall"><ha-icon icon="mdi:link-variant"></ha-icon>Tout grouper</button>
+          <button class="gab" id="ungroupall"><ha-icon icon="mdi:link-variant-off"></ha-icon>Séparer</button>
         </div>
         <div class="rooms" id="rooms"></div>
       </div></div></ha-card>`;
-    this.shadowRoot.querySelectorAll(".tbtn").forEach((b) =>
+    this.shadowRoot.querySelectorAll(".tbtn[data-a]").forEach((b) =>
       b.addEventListener("click", () => this._call(b.dataset.a, { entity_id: this._master() })));
+    this.shadowRoot.getElementById("shuffle").addEventListener("click", () => {
+      const m = this._master(); this._call("shuffle_set", { entity_id: m, shuffle: !this._hass.states[m].attributes.shuffle });
+    });
+    this.shadowRoot.getElementById("repeat").addEventListener("click", () => {
+      const m = this._master(); const cur = this._hass.states[m].attributes.repeat || "off";
+      this._call("repeat_set", { entity_id: m, repeat: { off: "all", all: "one", one: "off" }[cur] });
+    });
+    this.shadowRoot.getElementById("groupall").addEventListener("click", () => {
+      const m = this._master(); const others = this._spk.filter((e) => e !== m && this._hass.states[e]);
+      if (others.length) this._call("join", { entity_id: m, group_members: others });
+    });
+    this.shadowRoot.getElementById("ungroupall").addEventListener("click", () => {
+      this._spk.forEach((e) => { if (this._hass.states[e]) this._call("unjoin", { entity_id: e }); });
+    });
     const rooms = this.shadowRoot.getElementById("rooms");
     this._spk.forEach((eid) => {
       const row = document.createElement("div"); row.className = "room"; row.dataset.e = eid;
       const lk = document.createElement("button"); lk.className = "lk"; lk.innerHTML = `<ha-icon icon="mdi:link-variant"></ha-icon>`;
       lk.addEventListener("click", () => this._toggleJoin(eid));
       const nm = document.createElement("div"); nm.className = "rn";
+      const mute = document.createElement("button"); mute.className = "mute"; mute.innerHTML = `<ha-icon icon="mdi:volume-high"></ha-icon>`;
+      mute.addEventListener("click", () => { const s = this._hass.states[eid]; this._call("volume_mute", { entity_id: eid, is_volume_muted: !(s && s.attributes.is_volume_muted) }); });
       const sl = jmaSlider({ icon: "mdi:volume-high", fmt: (v) => v + "%", onCommit: (v) => this._call("volume_set", { entity_id: eid, volume_level: v / 100 }) });
       this._sliders[eid] = sl;
-      row.append(lk, nm, sl); rooms.appendChild(row);
+      row.append(lk, nm, mute, sl); rooms.appendChild(row);
     });
   }
   _toggleJoin(eid) {
@@ -1938,6 +1972,36 @@ class JmaSonosCard extends HTMLElement {
     const grp = (this._hass.states[master].attributes.group_members) || [master];
     if (grp.includes(eid)) this._call("unjoin", { entity_id: eid });
     else this._call("join", { entity_id: master, group_members: [eid] });
+  }
+  _browse(ent, type, id) { return this._hass.callWS({ type: "media_player/browse_media", entity_id: ent, media_content_type: type, media_content_id: id }); }
+  async _loadFavorites() {
+    this._favTried = true;
+    const ent = this._spk.find((e) => this._hass.states[e]); if (!ent) return;
+    try {
+      const root = await this._browse(ent, "favorites", "");
+      const out = [];
+      for (const node of (root.children || [])) {
+        if (node.can_play) out.push(node);
+        else if (node.can_expand) {
+          try { const sub = await this._browse(ent, node.media_content_type, node.media_content_id); (sub.children || []).forEach((it) => { if (it.can_play) out.push(it); }); } catch (e) {}
+        }
+        if (out.length >= 30) break;
+      }
+      this._renderFavorites(out);
+    } catch (e) { this._favTried = false; }
+  }
+  _renderFavorites(items) {
+    const host = this.shadowRoot.getElementById("favs"); if (!host) return;
+    host.innerHTML = ""; host.hidden = !items.length;
+    items.forEach((it) => {
+      const b = document.createElement("button"); b.className = "fav";
+      b.innerHTML = `<ha-icon icon="mdi:playlist-play"></ha-icon><span>${it.title}</span>`;
+      b.addEventListener("click", () => {
+        this._call("play_media", { entity_id: this._master(), media_content_type: it.media_content_type, media_content_id: it.media_content_id });
+        jmaToast({ title: "Sonos", message: "▶ " + it.title, icon: "mdi:playlist-music", color: this._config.accent });
+      });
+      host.appendChild(b);
+    });
   }
   _update() {
     const master = this._master();
@@ -1948,6 +2012,10 @@ class JmaSonosCard extends HTMLElement {
     this.shadowRoot.getElementById("sub").textContent = a.media_title ? a.media_title + (a.media_artist ? " — " + a.media_artist : "") : (ms.state === "playing" || ms.state === "paused" ? ms.state : "À l'arrêt");
     this.shadowRoot.querySelector(".pp").setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
     this.shadowRoot.getElementById("tile").classList.toggle("on", ["playing", "paused"].includes(ms.state));
+    this.shadowRoot.getElementById("shuffle").classList.toggle("on", !!a.shuffle);
+    const rep = a.repeat || "off";
+    this.shadowRoot.getElementById("repeat").classList.toggle("on", rep !== "off");
+    this.shadowRoot.querySelector(".ri").setAttribute("icon", rep === "one" ? "mdi:repeat-once" : "mdi:repeat");
     const art = this.shadowRoot.querySelector(".art");
     art.style.backgroundImage = a.entity_picture && ["playing", "paused"].includes(ms.state) ? `url("${a.entity_picture}")` : "";
     this._spk.forEach((eid) => {
@@ -1960,6 +2028,10 @@ class JmaSonosCard extends HTMLElement {
       lk.classList.toggle("master", isMaster);
       lk.classList.toggle("on", grouped && !isMaster);
       lk.querySelector("ha-icon").setAttribute("icon", isMaster ? "mdi:crown" : grouped ? "mdi:link-variant" : "mdi:link-variant-off");
+      const muted = !!sa.is_volume_muted;
+      const mute = row.querySelector(".mute");
+      mute.classList.toggle("on", muted);
+      mute.querySelector("ha-icon").setAttribute("icon", muted ? "mdi:volume-off" : "mdi:volume-high");
       const sl = this._sliders[eid];
       if (sa.volume_level != null) { sl.hidden = false; sl.setValue(Math.round(sa.volume_level * 100)); } else sl.hidden = true;
     });
@@ -2443,7 +2515,8 @@ function jmaEditorSchema(type) {
   if (t === "custom:jma-cameras-card") return [
     ent("entities", "camera", true, true), num("columns", 1, 4), txt("color"), txt("accent"), themeSel];
   if (t === "custom:jma-sonos-card") return [
-    txt("name"), ent("entities", "media_player", true, true), ent("master", "media_player"), txt("color"), txt("accent"), themeSel];
+    txt("name"), ent("entities", "media_player", true, true), ent("master", "media_player"),
+    { name: "favorites", selector: { boolean: {} } }, txt("color"), txt("accent"), themeSel];
 
   if (t === "custom:jma-ev-card") return [
     txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
