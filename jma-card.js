@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1102,6 +1102,145 @@ class JmaPopup extends HTMLElement {
 customElements.define("jma-card-popup", JmaPopup);
 
 // =============================================================================
+//  🚗 VOITURE ÉLECTRIQUE (Zoé) — batterie, autonomie, charge
+// =============================================================================
+class JmaEvCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Voiture", ...c }; }
+  getCardSize() { return 2; }
+  static getStubConfig() {
+    return { name: "Zoé", battery_entity: "sensor.zoe_batterie", range_entity: "sensor.zoe_autonomie_de_la_batterie",
+      plug_entity: "binary_sensor.zoe_prise", charging_entity: "binary_sensor.zoe_en_charge" };
+  }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); }
+  _g(key) { const e = this._config[key]; return e && this._hass.states[e]; }
+  _num(key) { const s = this._g(key); if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .gauge{height:8px;border-radius:99px;background:rgba(255,255,255,.15);overflow:hidden;}
+        .gfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--jma-beige),var(--jma-rose));transition:width .4s;}
+        .big{font-weight:800;font-size:1.15rem;letter-spacing:-.5px;flex:none;}
+        .stat{display:flex;justify-content:space-between;font-size:.72rem;opacity:.8;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
+        <div class="top"><div class="badge"><ha-icon id="ic" icon="mdi:car-electric"></ha-icon></div>
+          <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sub"></div></div>
+          <div class="big" id="pc">—</div></div>
+        <div class="gauge"><div class="gfill" id="g"></div></div>
+        <div class="stat"><span id="rng"></span><span id="eta"></span></div>
+        <div class="btnrow" id="row"></div>
+      </div></div></ha-card>`;
+    const row = this.shadowRoot.getElementById("row");
+    const addBtn = (key, icon, label, accent) => {
+      if (!this._config[key]) return;
+      const b = document.createElement("button");
+      b.className = "cbtn" + (accent ? " accent" : ""); b.title = label;
+      b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>`;
+      b.addEventListener("click", (e) => { e.stopPropagation(); this._press(this._config[key]); jmaToast({ title: this._config.name, message: label, icon, color: this._config.accent }); });
+      row.appendChild(b);
+    };
+    addBtn("charge_start", "mdi:flash", "Charger", true);
+    addBtn("charge_stop", "mdi:flash-off", "Stopper la charge");
+    addBtn("climate_button", "mdi:air-conditioner", "Climatisation");
+    this.shadowRoot.getElementById("tile").addEventListener("click", (e) => {
+      if (e.target.closest(".cbtn")) return;
+      const ent = this._config.battery_entity || this._config.range_entity;
+      if (ent) this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: ent } }));
+    });
+  }
+  _press(ent) {
+    const d = ent.split(".")[0];
+    if (d === "button") this._hass.callService("button", "press", { entity_id: ent });
+    else if (d === "switch") this._hass.callService("switch", "toggle", { entity_id: ent });
+    else if (d === "script") this._hass.callService("script", "turn_on", { entity_id: ent });
+  }
+  _update() {
+    if (!this._built) return;
+    const bat = this._num("battery_entity");
+    const rng = this._num("range_entity");
+    const plug = this._g("plug_entity"), charging = this._g("charging_entity");
+    const rem = this._num("remaining_entity");
+    const isCharging = charging && charging.state === "on";
+    const isPlugged = plug && plug.state === "on";
+    this.shadowRoot.getElementById("pc").textContent = bat != null ? bat + "%" : "—";
+    this.shadowRoot.getElementById("g").style.width = (bat != null ? Math.max(0, Math.min(100, bat)) : 0) + "%";
+    this.shadowRoot.getElementById("rng").textContent = rng != null ? "⚡ " + Math.round(rng) + " km" : "";
+    this.shadowRoot.getElementById("eta").textContent = isCharging && rem != null ? "⏱ " + Math.round(rem) + " min" : "";
+    this.shadowRoot.getElementById("ic").setAttribute("icon", isCharging ? "mdi:battery-charging-high" : isPlugged ? "mdi:power-plug" : "mdi:car-electric");
+    this.shadowRoot.getElementById("sub").textContent = isCharging ? "En charge" : isPlugged ? "Branchée" : "Débranchée";
+    this.shadowRoot.getElementById("tile").classList.toggle("on", isCharging);
+  }
+}
+customElements.define("jma-ev-card", JmaEvCard);
+
+// =============================================================================
+//  🗑️ POUBELLE — rappel par jour de la semaine (0=dim … 3=mer)
+// =============================================================================
+class JmaBinCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) {
+    this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Poubelle", icon: "mdi:trash-can", days: [3], ...c };
+    if (c && c.weekday != null) this._config.days = [c.weekday];
+  }
+  getCardSize() { return 1; }
+  static getStubConfig() { return { name: "Poubelle", days: [3] }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .tile.due{background:var(--jma-rose);color:var(--jma-dark);}
+        .tile.due .badge{background:rgba(10,10,11,.18);} .tile.due .badge ha-icon{color:var(--jma-dark);}
+        .done{border:none;border-radius:11px;background:rgba(255,255,255,.2);color:inherit;cursor:pointer;
+          font-weight:700;font-size:.74rem;padding:7px 11px;flex:none;}
+        .done:active{transform:scale(.93);}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile" id="tile"><div class="content">
+        <div class="top"><div class="badge"><ha-icon id="ic" icon="${c.icon}"></ha-icon></div>
+          <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sub"></div></div>
+          <button class="done" id="done" hidden>C'est fait</button></div>
+      </div></div></ha-card>`;
+    this.shadowRoot.getElementById("done").addEventListener("click", (e) => { e.stopPropagation(); this._ack(); });
+  }
+  _key() { return "jma-bin-" + (this._config.name || "x"); }
+  _today() { const d = new Date(); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+  _ack() {
+    try { localStorage.setItem(this._key(), this._today()); } catch (_) {}
+    jmaToast({ title: this._config.name, message: "Marquée comme sortie ✓", icon: "mdi:check-circle", color: this._config.accent });
+    this._update();
+  }
+  _update() {
+    if (!this._built) return;
+    const days = this._config.days || [3];
+    const dow = new Date().getDay();
+    const names = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+    let delta = 7;
+    for (let i = 1; i <= 7; i++) if (days.includes((dow + i) % 7)) { delta = i; break; }
+    const dueToday = days.includes(dow);
+    let acked = false;
+    try { acked = localStorage.getItem(this._key()) === this._today(); } catch (_) {}
+    const tile = this.shadowRoot.getElementById("tile");
+    const sub = this.shadowRoot.getElementById("sub");
+    const done = this.shadowRoot.getElementById("done");
+    const nextName = names[(dow + delta) % 7];
+    if (dueToday && !acked) {
+      tile.classList.add("due"); done.hidden = false;
+      sub.textContent = "À sortir aujourd'hui !" + (this._config.time ? " • " + this._config.time : "");
+      this.shadowRoot.getElementById("ic").setAttribute("icon", "mdi:trash-can-outline");
+    } else {
+      tile.classList.remove("due"); done.hidden = true;
+      this.shadowRoot.getElementById("ic").setAttribute("icon", this._config.icon || "mdi:trash-can");
+      if (dueToday && acked) sub.textContent = "Sortie ✓ — prochaine " + nextName;
+      else if (delta === 1) sub.textContent = "Demain (" + nextName + ")";
+      else sub.textContent = "Dans " + delta + " jours (" + nextName + ")";
+    }
+  }
+}
+customElements.define("jma-bin-card", JmaBinCard);
+
+// =============================================================================
 //  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
 // =============================================================================
 const ED_LABELS = {
@@ -1235,6 +1374,9 @@ class JmaNotifyCard extends HTMLElement {
         .cnt{min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--jma-rose);color:var(--jma-dark);
           font-weight:800;font-size:.74rem;display:none;align-items:center;justify-content:center;flex:none;}
         .cnt.show{display:flex;}
+        .test{border:none;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;cursor:pointer;
+          width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;}
+        .test:active{transform:scale(.9);} .test ha-icon{--mdc-icon-size:18px;}
         #list{display:flex;flex-direction:column;gap:6px;}
         .ntf{display:flex;gap:8px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:11px;padding:8px 10px;}
         .nt{font-weight:700;font-size:.78rem;}
@@ -1246,9 +1388,12 @@ class JmaNotifyCard extends HTMLElement {
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
         <div class="top"><div class="badge"><ha-icon id="bic" icon="mdi:bell-outline"></ha-icon></div>
           <div class="meta"><div class="name">${this._config.title || "Notifications"}</div><div class="sub" id="sub">—</div></div>
+          <button class="test" id="test" title="Tester une notif"><ha-icon icon="mdi:bell-ring"></ha-icon></button>
           <div class="cnt" id="cnt"></div></div>
         <div id="list"></div>
       </div></div></ha-card>`;
+    this.shadowRoot.getElementById("test").addEventListener("click", () =>
+      jmaToast({ title: "Test", message: "Notification de test JMA 🔔", icon: "mdi:bell-ring", color: ROSE }));
     this._built = true;
   }
   async _subscribe() {
@@ -1308,6 +1453,8 @@ REG("jma-vacuum-card", "JMA Aspirateur", "Aspirateur : Start / Pause / Dock.");
 REG("jma-scene-card", "JMA Scène", "Scène / script : bouton d'activation.");
 REG("jma-alarm-card", "JMA Alarme", "Alarme : Désarmer / Maison / Absent.");
 REG("jma-notify-card", "JMA Notifications", "Notifications persistantes + toasts popup auto.");
+REG("jma-ev-card", "JMA Voiture électrique", "Batterie, autonomie, charge (Zoé…).");
+REG("jma-bin-card", "JMA Poubelle", "Rappel sortie poubelle par jour de la semaine.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
