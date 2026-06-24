@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.56.0";
+const VERSION = "0.57.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1385,6 +1385,9 @@ class JmaPopup extends HTMLElement {
         .cpc{flex:1;height:27px;border-radius:8px;border:none;cursor:pointer;background:var(--p-surf2);color:var(--p-text);font-size:.7rem;font-weight:700;transition:transform .08s,background .15s;font-variant-numeric:tabular-nums;}
         .cpc:active{transform:scale(.92);background:var(--jma-grad);color:var(--jma-dark);}
         .cslider .slider{height:30px;}
+        .ltgl{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;background:var(--p-track);color:var(--p-text);display:flex;align-items:center;justify-content:center;flex:none;transition:background .2s,transform .08s;}
+        .ltgl:active{transform:scale(.9);}.ltgl ha-icon{--mdc-icon-size:19px;}
+        .ctile.on .ltgl{background:var(--jma-grad);color:var(--jma-dark);}
         /* sonos : barre transport persistante */
         .stp{position:sticky;top:0;z-index:6;background:linear-gradient(var(--p-bg) 72%,transparent);padding:1px 0 14px;margin-bottom:-4px;display:flex;flex-direction:column;gap:9px;}
         .stpbtns{display:flex;align-items:center;justify-content:center;gap:16px;}
@@ -1392,6 +1395,34 @@ class JmaPopup extends HTMLElement {
         .stpb:active{transform:scale(.86);}.stpb ha-icon{--mdc-icon-size:24px;}
         .stpb.big{width:54px;height:54px;background:var(--jma-grad);color:var(--jma-dark);}.stpb.big ha-icon{--mdc-icon-size:28px;}
         .stpvol{padding:0 2px;}
+        /* centre de sécurité */
+        .seclbl{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;opacity:.5;margin:13px 2px 7px;}
+        .secbig{font-weight:800;font-size:1.5rem;}
+        .secarm{display:flex;gap:7px;flex-wrap:wrap;}
+        .secarmb{flex:1;min-width:74px;padding:11px 8px;border:none;border-radius:14px;cursor:pointer;background:var(--p-surf);color:var(--p-text);font-weight:700;font-size:.8rem;display:flex;flex-direction:column;align-items:center;gap:4px;transition:transform .08s,background .2s;}
+        .secarmb:active{transform:scale(.95);}.secarmb ha-icon{--mdc-icon-size:22px;}
+        .secarmb.on{background:var(--jma-grad);color:var(--jma-dark);}
+        .seczones{display:flex;gap:6px;flex-wrap:wrap;}
+        .seczone{padding:7px 11px;border-radius:11px;border:1px solid var(--p-line);background:var(--p-surf);color:var(--p-text);font-size:.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;}
+        .seczone.armed{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);}
+        .secgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+        @media(max-width:680px){.secgrid{grid-template-columns:1fr;}}
+        .secitem{display:flex;align-items:center;gap:9px;background:var(--p-surf);border:1px solid var(--p-line);border-radius:14px;padding:9px 11px;transition:border-color .3s,background .3s;}
+        .secitem .si{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--p-track);flex:none;}
+        .secitem .si ha-icon{--mdc-icon-size:18px;color:var(--p-text);}
+        .secitem.ok .si ha-icon{color:#34c759;}
+        .secitem.alert{border-color:rgba(255,59,48,.5);background:rgba(255,59,48,.1);}
+        .secitem.alert .si{background:#ff3b30;}.secitem.alert .si ha-icon{color:#fff;}
+        .secitem .sn{flex:1;min-width:0;font-weight:700;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .secitem .sv{font-size:.7rem;font-weight:800;opacity:.65;white-space:nowrap;text-align:right;}
+        .secitem.alert .sv{color:#ff5a4d;opacity:1;}
+        .secbat{color:#ff9f0a;font-weight:800;}
+        .seccams{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;}
+        .seccam{position:relative;border-radius:13px;overflow:hidden;background:#000;aspect-ratio:16/10;cursor:pointer;}
+        .seccam img{width:100%;height:100%;object-fit:cover;display:block;}
+        .seccam span{position:absolute;left:7px;bottom:6px;font-size:.66rem;font-weight:800;color:#fff;text-shadow:0 1px 3px #000;}
+        .seccam .pb{position:absolute;top:6px;right:6px;background:rgba(255,59,48,.92);color:#fff;font-size:.58rem;font-weight:800;padding:2px 7px;border-radius:7px;display:none;}
+        .seccam .pb.on{display:block;}
         .gslider{flex-basis:100%;}.gslider .slider{height:30px;}
         .swatches{display:flex;gap:10px;flex-wrap:wrap;}
         .sw{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid var(--p-line);transition:transform .2s;}
@@ -1492,8 +1523,8 @@ class JmaPopup extends HTMLElement {
     this.shadowRoot.getElementById("x").addEventListener("click", (e) => { e.stopPropagation(); this._close(); });
     this._built = true;
     jmaApplyTheme(this, this._hass, this._config);
-    if (this._kind() === "sonos") this.shadowRoot.getElementById("wrap").classList.add("wide");
-    if (this._kind() === "climates" || this._kind() === "covers") this.shadowRoot.getElementById("wrap").classList.add("xwide");
+    if (this._kind() === "sonos" || this._kind() === "lights") this.shadowRoot.getElementById("wrap").classList.add("wide");
+    if (this._kind() === "climates" || this._kind() === "covers" || this._kind() === "security") this.shadowRoot.getElementById("wrap").classList.add("xwide");
     this._renderBody();
     this._refresh();
   }
@@ -1528,6 +1559,14 @@ class JmaPopup extends HTMLElement {
       (this._graphs || []).forEach((g) => (g.hass = this._hass));
       return;
     }
+    if (this._kind() === "security") {
+      const al = this._config.alarm_entity && this._hass.states[this._config.alarm_entity];
+      this.shadowRoot.getElementById("ht").textContent = this._config.name || "Sécurité";
+      this.shadowRoot.getElementById("hs").textContent = al ? (ALARM_FR[al.state] || al.state) : "Centre de sécurité";
+      this.shadowRoot.getElementById("hi").setAttribute("icon", al && ("" + al.state).startsWith("armed") ? "mdi:shield-lock" : "mdi:shield-home");
+      if (this._securityTick) this._securityTick();
+      return;
+    }
     if (this._kind() === "covers" || this._kind() === "climates") {
       const cov = this._kind() === "covers", list = this._config.entities || [];
       this.shadowRoot.getElementById("ht").textContent = this._config.name || (cov ? "Volets" : "Thermostats");
@@ -1535,6 +1574,15 @@ class JmaPopup extends HTMLElement {
       this.shadowRoot.getElementById("hi").setAttribute("icon", cov ? "mdi:window-shutter" : "mdi:thermostat");
       if (cov && this._coversTick) this._coversTick();
       if (!cov && this._climatesTick) this._climatesTick();
+      return;
+    }
+    if (this._kind() === "lights") {
+      const list = this._config.entities || []; let on = 0;
+      list.forEach((e) => { const s = this._hass.states[e]; if (s && s.state === "on") on++; });
+      this.shadowRoot.getElementById("ht").textContent = this._config.name || "Lumières";
+      this.shadowRoot.getElementById("hs").textContent = on ? on + " allumée" + (on > 1 ? "s" : "") : "toutes éteintes";
+      this.shadowRoot.getElementById("hi").setAttribute("icon", "mdi:lightbulb-group");
+      if (this._lightsTick) this._lightsTick();
       return;
     }
     const s = this._s;
@@ -1571,7 +1619,7 @@ class JmaPopup extends HTMLElement {
   }
   _renderBody() {
     const body = this.shadowRoot.getElementById("body");
-    body.innerHTML = ""; this._graphs = []; this._climTick = null; this._coversTick = null; this._climatesTick = null;
+    body.innerHTML = ""; this._graphs = []; this._climTick = null; this._coversTick = null; this._climatesTick = null; this._securityTick = null; this._lightsTick = null;
     if (this._kind() === "ev") return this._evBody(body);
     if (this._kind() === "energy") return this._energyBody(body);
     if (this._kind() === "agenda") return this._agendaBody(body);
@@ -1579,6 +1627,8 @@ class JmaPopup extends HTMLElement {
     if (this._kind() === "scenes") return this._scenesBody(body);
     if (this._kind() === "covers") return this._coversBody(body);
     if (this._kind() === "climates") return this._climatesBody(body);
+    if (this._kind() === "lights") return this._lightsBody(body);
+    if (this._kind() === "security") return this._securityBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -1835,6 +1885,77 @@ class JmaPopup extends HTMLElement {
     if (code) data.code = code;
     this._call("alarm_control_panel", svc, data);
     this._code = ""; const cd = this.shadowRoot.getElementById("cd"); if (cd) cd.textContent = "----";
+  }
+  _secNm(e) {
+    let n = (this._config.names && this._config.names[e]) || (this._hass.states[e] && this._hass.states[e].attributes.friendly_name) || e;
+    return n.replace(/\s+(Fumée|Humidité|Porte|Mouvement|Contact externe.*|Alerte contact.*|Water leak|Smoke|Occupancy)$/i, "").trim();
+  }
+  _securityBody(body) {
+    const c = this._config, H = this._hass.states;
+    const refs = { leak: [], smoke: [], door: [], motion: [], cams: [] };
+    const codeArg = c.code != null ? { code: String(c.code) } : {};
+    const alE = c.alarm_entity, al = alE && H[alE];
+    if (al) {
+      const feat = al.attributes.supported_features || 0;
+      const sb = document.createElement("div"); sb.className = "row";
+      sb.innerHTML = `<div class="secbig" id="secbig">${ALARM_FR[al.state] || al.state}</div>`;
+      body.appendChild(sb);
+      const arm = document.createElement("div"); arm.className = "row secarm";
+      const modes = [["alarm_disarm", "Désarmer", "disarmed", "mdi:shield-off-outline"]];
+      if (feat & 2) modes.push(["alarm_arm_away", "Absent", "armed_away", "mdi:shield-lock"]);
+      if (feat & 1) modes.push(["alarm_arm_home", "Maison", "armed_home", "mdi:shield-home"]);
+      if (feat & 4) modes.push(["alarm_arm_night", "Nuit", "armed_night", "mdi:weather-night"]);
+      modes.forEach(([svc, label, stt, icon]) => { const b = document.createElement("button"); b.className = "secarmb"; b.dataset.st = stt; b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>${label}`; b.addEventListener("click", () => this._call("alarm_control_panel", svc, { entity_id: alE, ...codeArg })); arm.appendChild(b); });
+      body.appendChild(arm);
+    }
+    const zones = (c.subzones || []).filter((e) => H[e]);
+    if (zones.length) {
+      const lbl = document.createElement("div"); lbl.className = "seclbl"; lbl.innerHTML = `<ha-icon icon="mdi:home-group" style="--mdc-icon-size:15px"></ha-icon>Zones`; body.appendChild(lbl);
+      const zr = document.createElement("div"); zr.className = "row seczones";
+      zones.forEach((e) => { const b = document.createElement("button"); b.className = "seczone"; b.dataset.e = e; b.innerHTML = `<ha-icon icon="mdi:shield" style="--mdc-icon-size:15px"></ha-icon><span class="zn"></span>`;
+        b.addEventListener("click", () => { const s = H[e]; const armed = ("" + s.state).startsWith("armed"); this._call("alarm_control_panel", armed ? "alarm_disarm" : "alarm_arm_away", { entity_id: e, ...codeArg }); }); zr.appendChild(b); });
+      body.appendChild(zr);
+    }
+    const section = (title, icon, list, okIcon, alertIcon, okWord) => {
+      if (!list.length) return [];
+      const lbl = document.createElement("div"); lbl.className = "seclbl"; lbl.innerHTML = `<ha-icon icon="${icon}" style="--mdc-icon-size:15px"></ha-icon>${title}`; body.appendChild(lbl);
+      const grid = document.createElement("div"); grid.className = "secgrid"; body.appendChild(grid);
+      const arr = [];
+      list.forEach((e) => { if (!H[e]) return; const it = document.createElement("div"); it.className = "secitem";
+        it.innerHTML = `<div class="si"><ha-icon class="sic"></ha-icon></div><div class="sn">${this._secNm(e)}</div><div class="sv"></div>`;
+        grid.appendChild(it); arr.push({ e, it, okIcon, alertIcon, okWord }); });
+      return arr;
+    };
+    refs.leak = section("Fuites d'eau", "mdi:water", c.leak_sensors || [], "mdi:water-check", "mdi:water-alert", "Sec");
+    refs.smoke = section("Fumée / Incendie", "mdi:smoke-detector-variant", c.smoke_sensors || [], "mdi:smoke-detector-variant", "mdi:smoke-detector-variant-alert", "RAS");
+    refs.door = section("Ouvertures", "mdi:door", c.door_sensors || [], "mdi:door-closed", "mdi:door-open", "Fermé");
+    refs.motion = section("Mouvement", "mdi:motion-sensor", c.motion_sensors || [], "mdi:motion-sensor-off", "mdi:motion-sensor", "Calme");
+    if ((c.cameras || []).length) {
+      const lbl = document.createElement("div"); lbl.className = "seclbl"; lbl.innerHTML = `<ha-icon icon="mdi:cctv" style="--mdc-icon-size:15px"></ha-icon>Caméras`; body.appendChild(lbl);
+      const cg = document.createElement("div"); cg.className = "seccams"; body.appendChild(cg);
+      c.cameras.forEach((e) => { const d = document.createElement("div"); d.className = "seccam"; d.dataset.e = e; d.innerHTML = `<img><div class="pb"><ha-icon icon="mdi:account" style="--mdc-icon-size:11px;vertical-align:-1px"></ha-icon> Présence</div><span></span>`;
+        d.addEventListener("click", () => { const p = document.createElement("jma-card-popup"); p.config = { entity: e, color: c.color, accent: c.accent, dark: c.dark, theme: c.theme }; p.hass = this._hass; document.body.appendChild(p); });
+        cg.appendChild(d); refs.cams.push({ e, d }); });
+    }
+    this._securityTick = () => {
+      if (al) { const s = this._hass.states[alE]; const big = this.shadowRoot.getElementById("secbig"); if (big && s) big.textContent = ALARM_FR[s.state] || s.state;
+        this.shadowRoot.querySelectorAll(".secarmb").forEach((b) => b.classList.toggle("on", s && s.state === b.dataset.st)); }
+      this.shadowRoot.querySelectorAll(".seczone").forEach((b) => { const s = this._hass.states[b.dataset.e]; if (!s) return; b.classList.toggle("armed", ("" + s.state).startsWith("armed")); b.querySelector(".zn").textContent = (s.attributes.friendly_name || b.dataset.e).replace(/^maison\s*/i, "") || "Maison"; });
+      ["leak", "smoke", "door", "motion"].forEach((k) => refs[k].forEach(({ e, it, okIcon, alertIcon, okWord }) => {
+        const s = this._hass.states[e]; if (!s) return; const on = s.state === "on";
+        it.classList.toggle("alert", on); it.classList.toggle("ok", !on);
+        it.querySelector(".sic").setAttribute("icon", on ? alertIcon : okIcon);
+        const base = e.split(".")[1].replace(/_(water_leak|smoke|porte|mouvement|contact_externe_ouvert|alerte_contact_externe)$/, "");
+        const batt = this._hass.states["binary_sensor." + base + "_battery_low"] || this._hass.states["binary_sensor." + base + "_batterie_faible"];
+        const low = batt && batt.state === "on";
+        it.querySelector(".sv").innerHTML = on ? "⚠ ALERTE" : (low ? `<span class="secbat">batt. faible</span>` : okWord);
+      }));
+      refs.cams.forEach(({ e, d }) => { const s = this._hass.states[e]; if (!s) return; const img = d.querySelector("img"), lab = d.querySelector("span");
+        lab.textContent = s.attributes.friendly_name || e; const p = s.attributes.entity_picture;
+        if (p) { const bust = Math.floor(Date.now() / 8000); if (img.dataset.b != bust) { img.dataset.b = bust; img.src = p + (p.includes("?") ? "&" : "?") + "_=" + bust; } }
+        const oid = e.split(".")[1], pers = this._hass.states["binary_sensor." + oid + "_person_occupancy"]; d.querySelector(".pb").classList.toggle("on", !!(pers && pers.state === "on")); });
+    };
+    this._securityTick();
   }
   _vacuumBody(body) {
     const s = this._s, a = s.attributes;
@@ -2185,6 +2306,38 @@ class JmaPopup extends HTMLElement {
       });
     };
     this._coversTick();
+  }
+  _lightsBody(body) {
+    const list = this._config.entities || [];
+    const m = document.createElement("div"); m.className = "row btns";
+    m.innerHTML = `<button class="btn" id="lon"><ha-icon icon="mdi:lightbulb-on" style="--mdc-icon-size:18px;vertical-align:-4px;margin-right:4px"></ha-icon>Tout allumer</button>` +
+      `<button class="btn" id="loff"><ha-icon icon="mdi:lightbulb-off" style="--mdc-icon-size:18px;vertical-align:-4px;margin-right:4px"></ha-icon>Tout éteindre</button>`;
+    m.querySelector("#lon").addEventListener("click", () => this._call("homeassistant", "turn_on", { entity_id: list }));
+    m.querySelector("#loff").addEventListener("click", () => this._call("homeassistant", "turn_off", { entity_id: list }));
+    body.appendChild(m);
+    this._lightRows = {};
+    const grid = document.createElement("div"); grid.className = "grid2"; body.appendChild(grid);
+    list.forEach((eid) => {
+      const s = this._hass.states[eid]; if (!s) return; const dom = eid.split(".")[0];
+      const nm = (this._config.names && this._config.names[eid]) || (s.attributes.friendly_name || eid);
+      const tile = document.createElement("div"); tile.className = "ctile light";
+      tile.innerHTML = `<div class="chead"><div class="cicon"><ha-icon class="ci" icon="mdi:lightbulb"></ha-icon></div>` +
+        `<div class="cname">${nm}</div><button class="ltgl" aria-label="Allumer/Éteindre"><ha-icon icon="mdi:power"></ha-icon></button></div>`;
+      tile.querySelector(".ltgl").addEventListener("click", () => this._call("homeassistant", "toggle", { entity_id: eid }));
+      let sl = null;
+      const dimmable = dom === "light" && (s.attributes.brightness != null || (s.attributes.supported_color_modes || []).some((m) => !["onoff"].includes(m)));
+      if (dimmable) { sl = jmaSlider({ icon: "mdi:brightness-6", fmt: (v) => v + "%", label: nm, onCommit: (v) => v <= 0 ? this._call("light", "turn_off", { entity_id: eid }) : this._call("light", "turn_on", { entity_id: eid, brightness_pct: v }) }); const sw = document.createElement("div"); sw.className = "cslider"; sw.appendChild(sl); tile.appendChild(sw); }
+      grid.appendChild(tile); this._lightRows[eid] = { tile, sl };
+    });
+    this._lightsTick = () => {
+      list.forEach((eid) => {
+        const s = this._hass.states[eid], r = this._lightRows[eid]; if (!s || !r) return; const on = s.state === "on";
+        r.tile.classList.toggle("on", on);
+        r.tile.querySelector(".ci").setAttribute("icon", on ? "mdi:lightbulb-on" : "mdi:lightbulb-outline");
+        if (r.sl) { const b = s.attributes.brightness; r.sl.setValue(b != null ? Math.round(b / 255 * 100) : (on ? 100 : 0)); }
+      });
+    };
+    this._lightsTick();
   }
   _climatesBody(body) {
     const list = this._config.entities || [];
@@ -3854,6 +4007,30 @@ class JmaSecurityCard extends HTMLElement {
   static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
   _st(e) { return e && this._hass ? this._hass.states[e] : null; }
+  // auto-détection des capteurs (override possible par config)
+  _groups() {
+    const c = this._config, H = this._hass.states;
+    const all = Object.keys(H).filter((e) => e.startsWith("binary_sensor.") && !["unavailable", "unknown"].includes(H[e].state));
+    const dc = (e) => H[e].attributes.device_class || "";
+    const pick = (key, test) => (c[key] && c[key].length) ? c[key] : all.filter(test);
+    return {
+      leak: pick("leak_sensors", (e) => dc(e) === "moisture"),
+      smoke: pick("smoke_sensors", (e) => dc(e) === "smoke" || dc(e) === "gas" || dc(e) === "carbon_monoxide"),
+      door: pick("sensors", (e) => ["door", "window", "opening"].includes(dc(e))),
+      motion: pick("motion_sensors", (e) => dc(e) === "motion" && !/tablette|pc_louis|_mur\b/.test(e)),
+    };
+  }
+  _popupSecurity() {
+    if (this._popup) return;
+    const g = this._groups(), c = this._config;
+    const p = document.createElement("jma-card-popup");
+    p.config = { kind: "security", name: c.name || "Sécurité", alarm_entity: c.alarm_entity, subzones: c.subzones || [],
+      leak_sensors: g.leak, smoke_sensors: g.smoke, door_sensors: g.door, motion_sensors: g.motion, cameras: this._cams,
+      names: c.names, color: c.color, accent: c.accent, dark: c.dark, theme: c.theme };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
   _popupFor(entity, kind) { if (this._popup || !entity) return; const p = document.createElement("jma-card-popup"); p.config = { entity, kind, color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme }; p.hass = this._hass; p.addEventListener("jma-close", () => { this._popup = null; }); document.body.appendChild(p); this._popup = p; }
   _build() {
     const c = this._config;
@@ -3867,25 +4044,36 @@ class JmaSecurityCard extends HTMLElement {
       @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
       .secmeta{flex:1;min-width:0;}.secmeta b{font-weight:800;font-size:1.04rem;}.secmeta small{display:block;font-size:.74rem;opacity:.65;}
       .secchev{--mdc-icon-size:20px;opacity:.4;}
+      .safe{display:flex;gap:7px;}
+      .safei{flex:1;display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:12px;background:var(--jma-surf3);font-size:.76rem;font-weight:800;cursor:pointer;transition:background .3s;}
+      .safei ha-icon{--mdc-icon-size:18px;color:var(--jma-icon);flex:none;}
+      .safei.ok ha-icon{color:#34c759;}
+      .safei small{display:block;font-weight:600;font-size:.64rem;opacity:.6;}
+      .safei.alert{background:rgba(255,59,48,.16);color:#ff5a4d;animation:jma-pulse 1s infinite;}.safei.alert ha-icon{color:#ff5a4d;}
       .sens{display:flex;gap:5px;flex-wrap:wrap;}
       .sp{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:10px;background:var(--jma-surf3);font-size:.72rem;font-weight:700;}
       .sp ha-icon{--mdc-icon-size:14px;color:var(--jma-icon);}
-      .sp.open{background:rgba(255,59,48,.16);color:#ff5a4d;}.sp.open ha-icon{color:#ff5a4d;}
+      .sp.open{background:rgba(255,149,0,.16);color:#ff9f0a;}.sp.open ha-icon{color:#ff9f0a;}
+      .sp.motion{background:rgba(110,160,255,.16);color:#6aa3ff;}.sp.motion ha-icon{color:#6aa3ff;}
       .cams{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;}
       .cam{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/10;cursor:pointer;}
       .cam img{width:100%;height:100%;object-fit:cover;display:block;}
       .cam span{position:absolute;left:6px;bottom:5px;font-size:.62rem;font-weight:800;color:#fff;text-shadow:0 1px 3px #000;}
+      .cam .pers{position:absolute;top:5px;right:5px;background:rgba(255,59,48,.92);color:#fff;font-size:.58rem;font-weight:800;padding:2px 6px;border-radius:7px;display:none;align-items:center;gap:3px;}
+      .cam .pers ha-icon{--mdc-icon-size:12px;}.cam .pers.on{display:flex;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile sec" id="tile"><div class="content" style="gap:10px;">
         <div class="secstate" id="secstate"><div class="secbadge" id="secbadge"><ha-icon id="secicon" icon="mdi:shield-home"></ha-icon></div>
           <div class="secmeta"><b id="secst">—</b><small id="secsub"></small></div>
           <ha-icon class="secchev" icon="mdi:chevron-right"></ha-icon></div>
+        <div class="safe" id="safe"></div>
         <div class="sens" id="sens"></div>
         <div class="cams" id="cams"></div>
       </div></div></ha-card>`;
-    this.shadowRoot.getElementById("secstate").addEventListener("click", () => this._popupFor(this._config.alarm_entity));
+    this.shadowRoot.getElementById("secstate").addEventListener("click", () => this._popupSecurity());
+    this.shadowRoot.getElementById("safe").addEventListener("click", () => this._popupSecurity());
     const cams = this.shadowRoot.getElementById("cams");
-    this._cams.forEach((eid) => { const d = document.createElement("div"); d.className = "cam"; d.dataset.e = eid; d.innerHTML = `<img><span></span>`; d.addEventListener("click", () => this._popupFor(eid)); cams.appendChild(d); });
+    this._cams.forEach((eid) => { const d = document.createElement("div"); d.className = "cam"; d.dataset.e = eid; d.innerHTML = `<img><div class="pers"><ha-icon icon="mdi:account"></ha-icon>Présence</div><span></span>`; d.addEventListener("click", (e) => { e.stopPropagation(); this._popupFor(eid); }); cams.appendChild(d); });
   }
   _update() {
     const $ = (id) => this.shadowRoot.getElementById(id);
@@ -3897,20 +4085,39 @@ class JmaSecurityCard extends HTMLElement {
       $("secicon").setAttribute("icon", trig ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-home-outline");
       badge.classList.toggle("armed", armed && !trig); badge.classList.toggle("trig", trig);
     } else $("secst").textContent = "Alarme indisponible";
-    const sens = $("sens"), open = [];
-    this._sensors.forEach((eid) => { const s = this._st(eid); if (s && s.state === "on") open.push(s); });
-    if (this._sensors.length) {
+    // bandeau sécurité (fuites + fumée) — toujours visible
+    const g = this._groups();
+    const cnt = (arr) => arr.reduce((n, e) => { const s = this._st(e); return n + (s && s.state === "on" ? 1 : 0); }, 0);
+    const leakN = cnt(g.leak), smokeN = cnt(g.smoke), safe = $("safe");
+    const cell = (icon, label, n, total, okIcon) => {
+      const alert = n > 0;
+      return `<div class="safei ${alert ? "alert" : "ok"}"><ha-icon icon="${alert ? icon : okIcon}"></ha-icon>` +
+        `<div>${label}${alert ? "" : ""}<small>${alert ? n + " alerte" + (n > 1 ? "s" : "") : (total ? "OK · " + total : "—")}</small></div></div>`;
+    };
+    let cells = "";
+    if (g.leak.length) cells += cell("mdi:water-alert", "Fuite d'eau", leakN, g.leak.length, "mdi:water-check");
+    if (g.smoke.length) cells += cell("mdi:smoke-detector-variant-alert", "Fumée", smokeN, g.smoke.length, "mdi:smoke-detector-variant");
+    safe.innerHTML = cells; safe.hidden = !cells;
+    // ouvertures + mouvement actifs
+    const sens = $("sens"); const chips = [];
+    g.door.forEach((e) => { const s = this._st(e); if (s && s.state === "on") chips.push(`<div class="sp open"><ha-icon icon="${/(fenetre|window)/i.test(e) ? "mdi:window-open-variant" : "mdi:door-open"}"></ha-icon>${this._nm(s, e)}</div>`); });
+    const motN = cnt(g.motion);
+    if (chips.length || motN || g.door.length) {
       sens.hidden = false;
-      sens.innerHTML = open.length
-        ? open.map((s) => `<div class="sp open"><ha-icon icon="${s.attributes.icon || (/(fenetre|window)/i.test(s.entity_id) ? "mdi:window-open-variant" : "mdi:door-open")}"></ha-icon>${s.attributes.friendly_name || s.entity_id}</div>`).join("")
-        : `<div class="sp"><ha-icon icon="mdi:check-circle"></ha-icon>Tout fermé (${this._sensors.length})</div>`;
+      if (!chips.length && g.door.length) chips.unshift(`<div class="sp"><ha-icon icon="mdi:check-circle"></ha-icon>Tout fermé (${g.door.length})</div>`);
+      if (motN) chips.push(`<div class="sp motion"><ha-icon icon="mdi:motion-sensor"></ha-icon>${motN} mouvement${motN > 1 ? "s" : ""}</div>`);
+      sens.innerHTML = chips.join("");
     } else sens.hidden = true;
+    // caméras + badge présence (Frigate)
     this._cams.forEach((eid) => {
       const d = this.shadowRoot.querySelector(`.cam[data-e="${eid}"]`); if (!d) return;
       const s = this._st(eid), img = d.querySelector("img"), lab = d.querySelector("span");
       if (s) { lab.textContent = s.attributes.friendly_name || eid; const p = s.attributes.entity_picture; if (p) { const bust = Math.floor(Date.now() / 10000); if (img.dataset.b != bust) { img.dataset.b = bust; img.src = p + (p.includes("?") ? "&" : "?") + "_=" + bust; } } }
+      const oid = eid.split(".")[1], pers = this._st("binary_sensor." + oid + "_person_occupancy");
+      d.querySelector(".pers").classList.toggle("on", !!(pers && pers.state === "on"));
     });
   }
+  _nm(s, e) { return (this._config.names && this._config.names[e]) || (s && s.attributes.friendly_name) || e; }
 }
 jmaDef("jma-security-card", JmaSecurityCard);
 
@@ -4249,6 +4456,17 @@ class JmaClimatesCard extends JmaGroupCard {
   }
 }
 jmaDef("jma-climates-card", JmaClimatesCard);
+class JmaLightsCard extends JmaGroupCard {
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Lumières", icon: "mdi:lightbulb-group", ...c }; this._DOMAIN = "light"; this._KIND = "lights"; this._EXCLUDE = /(screen|pc_louis|tablette|_mur\b)/i; }
+  static getStubConfig() { return { name: "Lumières" }; }
+  _update() {
+    const list = this._list(); let on = 0;
+    list.forEach((e) => { const s = this._hass.states[e]; if (s && s.state === "on") on++; });
+    const tile = this.shadowRoot.getElementById("tile"); tile.classList.toggle("on", on > 0);
+    this.shadowRoot.getElementById("sub").textContent = list.length + " · " + (on ? on + " allumée" + (on > 1 ? "s" : "") : "toutes éteintes");
+  }
+}
+jmaDef("jma-lights-card", JmaLightsCard);
 
 // =============================================================================
 window.customCards = window.customCards || [];
@@ -4282,6 +4500,7 @@ REG("jma-security-card", "JMA Sécurité", "Alarme + caméras + ouvertures, vue 
 REG("jma-screensaver-card", "JMA Mode veille", "Économiseur d'écran horloge pour tablette.");
 REG("jma-covers-card", "JMA Tous les volets", "Tuile + pop-up de tous les volets.");
 REG("jma-climates-card", "JMA Tous les thermostats", "Tuile + pop-up de tous les thermostats.");
+REG("jma-lights-card", "JMA Toutes les lumières", "Tuile + pop-up groupé des lumières.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
