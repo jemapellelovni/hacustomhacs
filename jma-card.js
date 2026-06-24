@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.52.0";
+const VERSION = "0.53.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1340,6 +1340,9 @@ class JmaPopup extends HTMLElement {
         .tcard.cool::before{background:linear-gradient(180deg,#7fb0ff,#5b9bff);}
         .tcard.warn{border-color:rgba(255,140,66,.42);box-shadow:0 4px 18px rgba(255,126,66,.12);}
         .tcard.cool{border-color:rgba(110,160,255,.42);box-shadow:0 4px 18px rgba(91,155,255,.12);}
+        .tcard.on{border-color:rgba(150,170,120,.4);box-shadow:0 4px 16px rgba(0,0,0,.05);}
+        .tcard.off{opacity:.46;filter:saturate(.55);}
+        .tcard.off:active{opacity:.7;}
         .thead{display:flex;align-items:center;gap:9px;}
         .ticon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--p-track);flex:none;transition:background .3s;}
         .ticon ha-icon{--mdc-icon-size:20px;color:var(--p-text);transition:color .3s;}
@@ -2180,6 +2183,7 @@ class JmaPopup extends HTMLElement {
         const heating = ["heating", "preheating"].includes(a.hvac_action), cooling = a.hvac_action === "cooling";
         const off = s.state === "off" || s.state === "unavailable";
         card.querySelector(".tact").textContent = off ? "Éteint" : (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
+        card.classList.toggle("off", off);
         card.classList.toggle("on", !off && !heating && !cooling);
         card.classList.toggle("warn", heating);
         card.classList.toggle("cool", cooling);
@@ -3004,7 +3008,7 @@ class JmaEnergyCard extends HTMLElement {
     p.addEventListener("jma-close", () => { this._popup = null; });
     document.body.appendChild(p); this._popup = p;
   }
-  _fmtW(w) { w = Math.round(w); return w >= 1000 ? (w / 1000).toFixed(w >= 10000 ? 0 : 1).replace(".", ",") + " kW" : w + " W"; }
+  _fmtW(w) { w = Math.round(w); return w.toLocaleString("fr-FR").replace(/ | /g, " ") + " W"; }
   _update() {
     const prod = Math.max(0, this._num("production_entity") || 0);
     const grid = Math.max(0, this._num("grid_entity") || 0);
@@ -4071,7 +4075,7 @@ class JmaScreensaverCard extends HTMLElement {
     }
     // barre solaire (rose) vs réseau EDF (bleu) + couleur de l'heure selon la dominance
     const gl = this._ovl.querySelector("#jcgl"), bs = this._ovl.querySelector("#jbs"), bg = this._ovl.querySelector("#jbg");
-    const f = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " kW" : Math.round(v) + " W";
+    const f = (v) => Math.round(v).toLocaleString("fr-FR").replace(/ | /g, " ") + " W";
     const sol = this._wsv("production_entity"), grid = this._wsv("grid_entity");
     const s = Math.max(0, sol || 0), g = Math.max(0, grid || 0), tot = Math.max(s + g, 1);
     const solarDom = s >= g;
@@ -4173,7 +4177,7 @@ class JmaCoversCard extends JmaGroupCard {
 }
 jmaDef("jma-covers-card", JmaCoversCard);
 class JmaClimatesCard extends JmaGroupCard {
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Thermostats", icon: "mdi:thermostat", ...c }; this._DOMAIN = "climate"; this._KIND = "climates"; this._TOP = c.top || ["climate.salon", "climate.zona_05"]; this._BOTTOM = c.bottom || ["climate.kelud_1750w_blc_chauffage", "climate.group"]; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Thermostats", icon: "mdi:thermostat", ...c }; this._DOMAIN = "climate"; this._KIND = "climates"; this._TOP = c.top || ["climate.zona_05", "climate.salon", "climate.chambre1", "climate.chambre_2", "climate.bureau"]; this._BOTTOM = c.bottom || ["climate.kelud_1750w_blc_chauffage", "climate.group"]; }
   static getStubConfig() { return { name: "Thermostats" }; }
   _update() {
     const list = this._list(); let on = 0;
