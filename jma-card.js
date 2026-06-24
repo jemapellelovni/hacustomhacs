@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.51.0";
+const VERSION = "0.52.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1356,7 +1356,10 @@ class JmaPopup extends HTMLElement {
         .tval{font-weight:800;font-size:2.15rem;min-width:96px;text-align:center;letter-spacing:-1px;line-height:1;transition:color .2s;font-variant-numeric:tabular-nums;}
         .tcard.warn .tval{color:#ff9248;}.tcard.cool .tval{color:#6aa3ff;}
         .tcard.editing .tval{color:var(--jma-rose);}
-        .tsub{text-align:center;font-size:.74rem;opacity:.62;margin-top:-3px;}
+        .tsub{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:-2px;}
+        .tcur{display:inline-flex;align-items:center;gap:3px;font-weight:800;font-size:.96rem;opacity:.92;font-variant-numeric:tabular-nums;}
+        .tcur ha-icon{--mdc-icon-size:17px;opacity:.7;}
+        .thum{font-size:.78rem;opacity:.55;font-weight:600;}
         .tmodes{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:1px;}
         .tmode{width:34px;height:34px;border-radius:11px;border:1px solid var(--p-line);background:transparent;color:var(--p-mut);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,background .15s,color .15s,border-color .15s;}
         .tmode:active{transform:scale(.9);}.tmode ha-icon{--mdc-icon-size:19px;}
@@ -2139,7 +2142,7 @@ class JmaPopup extends HTMLElement {
         `<div class="tstep"><button class="tbtn" data-d="-1" aria-label="Baisser"><ha-icon icon="mdi:minus"></ha-icon></button>` +
         `<div class="tval">—</div>` +
         `<button class="tbtn" data-d="1" aria-label="Monter"><ha-icon icon="mdi:plus"></ha-icon></button></div>` +
-        `<div class="tsub"></div>` +
+        `<div class="tsub"><span class="tcur"><ha-icon icon="mdi:thermometer"></ha-icon><span class="tcurv">—</span></span><span class="thum"></span></div>` +
         `<div class="tmodes"></div>`;
       const R = { row: card, pend: null, timer: null, hold: null };
       const valEl = card.querySelector(".tval");
@@ -2171,9 +2174,9 @@ class JmaPopup extends HTMLElement {
       list.forEach((eid) => {
         const s = this._hass.states[eid], R = this._climRows[eid]; if (!s || !R) return; const a = s.attributes, card = R.row;
         if (R.pend == null) card.querySelector(".tval").textContent = a.temperature != null ? a.temperature + "°" : "—";
-        const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "°" : "";
-        const hum = a.current_humidity != null ? " · 💧 " + a.current_humidity + "%" : "";
-        card.querySelector(".tsub").textContent = (cur + hum) || "—";
+        card.querySelector(".tcurv").textContent = a.current_temperature != null ? a.current_temperature + "°" : "—";
+        const humEl = card.querySelector(".thum");
+        humEl.textContent = a.current_humidity != null ? "💧 " + a.current_humidity + "%" : "";
         const heating = ["heating", "preheating"].includes(a.hvac_action), cooling = a.hvac_action === "cooling";
         const off = s.state === "off" || s.state === "unavailable";
         card.querySelector(".tact").textContent = off ? "Éteint" : (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
