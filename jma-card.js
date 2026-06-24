@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.60.0";
+const VERSION = "0.61.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -911,6 +911,94 @@ jmaDef("jma-light-card", JmaLightCard);
 jmaDef("jma-switch-card", JmaSwitchCard);
 jmaDef("jma-cover-card", JmaCoverCard);
 jmaDef("jma-thermostat-card", JmaThermostatCard);
+// Thermostat INLINE (sans pop-up) : consigne XL + modes + temp réelle, réglage fluide
+const JMA_CMODE_ICON = { off: "mdi:power", heat: "mdi:fire", cool: "mdi:snowflake", auto: "mdi:autorenew", heat_cool: "mdi:sun-snowflake-variant", dry: "mdi:water-percent", fan_only: "mdi:fan" };
+class JmaClimateTileCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._R = { pend: null, timer: null, hold: null }; }
+  setConfig(c) { if (!c.entity) throw new Error("climat : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { entity: "climate.example" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
+  get _s() { return this._hass.states[this._config.entity]; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .ct{display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden;}
+      .ct::before{content:"";position:absolute;left:-13px;top:-13px;bottom:-13px;width:4px;background:transparent;transition:background .3s;}
+      .ct.warn::before{background:linear-gradient(180deg,#ffb24d,#ff7e42);}
+      .ct.cool::before{background:linear-gradient(180deg,#7fb0ff,#5b9bff);}
+      .cthead{display:flex;align-items:center;gap:9px;}
+      .cticon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;transition:background .3s;}
+      .cticon ha-icon{--mdc-icon-size:20px;color:var(--jma-icon);transition:color .3s;}
+      .ct.on .cticon{background:var(--jma-grad);}.ct.on .cticon ha-icon{color:var(--jma-dark);}
+      .ct.warn .cticon{background:linear-gradient(135deg,#ffb24d,#ff7e42);}.ct.warn .cticon ha-icon{color:#3a1d00;}
+      .ct.cool .cticon{background:linear-gradient(135deg,#7fb0ff,#5b9bff);}.ct.cool .cticon ha-icon{color:#04204a;}
+      .ctname{font-weight:700;font-size:.96rem;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ctact{font-size:.62rem;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--jma-surf3);color:var(--jma-icon);white-space:nowrap;}
+      .ct.warn .ctact{background:rgba(255,140,66,.2);color:#ff9248;}
+      .ct.cool .ctact{background:rgba(110,160,255,.2);color:#6aa3ff;}
+      .ctstep{display:flex;align-items:center;justify-content:center;gap:22px;padding:3px 0 1px;}
+      .ctbtn{width:46px;height:46px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+      .ctbtn:active{transform:scale(.86);}.ctbtn ha-icon{--mdc-icon-size:25px;}
+      .ctval{font-weight:800;font-size:2.4rem;min-width:104px;text-align:center;letter-spacing:-1.5px;line-height:1;transition:color .2s;font-variant-numeric:tabular-nums;}
+      .ct.warn .ctval{color:#ff9248;}.ct.cool .ctval{color:#6aa3ff;}.ct.editing .ctval{color:var(--jma-rose);}
+      .ctsub{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:-3px;}
+      .ctcur{display:inline-flex;align-items:center;gap:3px;font-weight:800;font-size:.98rem;opacity:.92;font-variant-numeric:tabular-nums;}
+      .ctcur ha-icon{--mdc-icon-size:18px;opacity:.7;}
+      .cthum{font-size:.8rem;opacity:.55;font-weight:700;}
+      .ctmodes{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;}
+      .ctmode{width:36px;height:36px;border-radius:11px;border:1px solid var(--jma-surf3);background:transparent;color:var(--jma-icon);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,background .15s,color .15s;}
+      .ctmode:active{transform:scale(.9);}.ctmode ha-icon{--mdc-icon-size:20px;}
+      .ctmode.on{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="ct" id="ct">
+          <div class="cthead"><div class="cticon"><ha-icon class="cti" icon="mdi:thermostat"></ha-icon></div>
+            <div class="ctname"></div><div class="ctact">—</div></div>
+          <div class="ctstep"><button class="ctbtn" data-d="-1" aria-label="Baisser"><ha-icon icon="mdi:minus"></ha-icon></button>
+            <div class="ctval">—</div>
+            <button class="ctbtn" data-d="1" aria-label="Monter"><ha-icon icon="mdi:plus"></ha-icon></button></div>
+          <div class="ctsub"><span class="ctcur"><ha-icon icon="mdi:thermometer"></ha-icon><span class="ctcurv">—</span></span><span class="cthum"></span></div>
+          <div class="ctmodes"></div>
+        </div>
+      </div></div></ha-card>`;
+    this.shadowRoot.querySelectorAll(".ctbtn").forEach((b) => b.addEventListener("click", () => this._bump(Number(b.dataset.d))));
+  }
+  _bump(dir) {
+    const st = this._s; if (!st) return; const a = st.attributes; const step = a.target_temp_step || 0.5;
+    const min = a.min_temp ?? 7, max = a.max_temp ?? 35; const R = this._R;
+    const base = R.pend != null ? R.pend : (a.temperature ?? min);
+    R.pend = Math.round(Math.max(min, Math.min(max, Math.round((base + dir * step) / step) * step)) * 10) / 10;
+    const ct = this.shadowRoot.getElementById("ct");
+    this.shadowRoot.querySelector(".ctval").textContent = R.pend + "°"; ct.classList.add("editing");
+    clearTimeout(R.timer);
+    R.timer = setTimeout(() => {
+      this._hass.callService("climate", "set_temperature", { entity_id: this._config.entity, temperature: R.pend });
+      clearTimeout(R.hold); R.hold = setTimeout(() => { R.pend = null; ct.classList.remove("editing"); }, 3000);
+    }, 500);
+  }
+  _update() {
+    const s = this._s; if (!s) return; const a = s.attributes; const ct = this.shadowRoot.getElementById("ct");
+    if (!this._modesBuilt && a.hvac_modes) {
+      this._modesBuilt = true; const mc = this.shadowRoot.querySelector(".ctmodes");
+      (a.hvac_modes || []).forEach((m) => { const b = document.createElement("button"); b.className = "ctmode"; b.dataset.m = m; b.title = HVAC_FR[m] || m;
+        b.innerHTML = `<ha-icon icon="${JMA_CMODE_ICON[m] || "mdi:thermostat"}"></ha-icon>`;
+        b.addEventListener("click", () => this._hass.callService("climate", "set_hvac_mode", { entity_id: this._config.entity, hvac_mode: m })); mc.appendChild(b); });
+    }
+    this.shadowRoot.querySelector(".ctname").textContent = this._config.name || a.friendly_name || this._config.entity;
+    if (this._R.pend == null) this.shadowRoot.querySelector(".ctval").textContent = a.temperature != null ? a.temperature + "°" : "—";
+    this.shadowRoot.querySelector(".ctcurv").textContent = a.current_temperature != null ? a.current_temperature + "°" : "—";
+    this.shadowRoot.querySelector(".cthum").textContent = a.current_humidity != null ? "💧 " + a.current_humidity + "%" : "";
+    const heating = ["heating", "preheating"].includes(a.hvac_action), cooling = a.hvac_action === "cooling";
+    const off = s.state === "off" || s.state === "unavailable";
+    this.shadowRoot.querySelector(".ctact").textContent = off ? "Éteint" : (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
+    ct.classList.toggle("on", !off && !heating && !cooling); ct.classList.toggle("warn", heating); ct.classList.toggle("cool", cooling);
+    this.shadowRoot.querySelector(".cti").setAttribute("icon", cooling ? "mdi:snowflake" : heating ? "mdi:fire" : "mdi:thermostat");
+    this.shadowRoot.querySelectorAll(".ctmode").forEach((b) => b.classList.toggle("on", b.dataset.m === s.state));
+  }
+}
+jmaDef("jma-climate-tile-card", JmaClimateTileCard);
 
 // =============================================================================
 //  🎯 THERMOSTAT CADRAN (façon Nest) — anneau circulaire, glisser pour régler
@@ -4253,6 +4341,9 @@ class JmaSecurityCard extends HTMLElement {
       smoke: pick("smoke_sensors", (e) => dc(e) === "smoke" || dc(e) === "gas" || dc(e) === "carbon_monoxide"),
       door: pick("sensors", (e) => ["door", "window", "opening"].includes(dc(e))),
       motion: pick("motion_sensors", (e) => dc(e) === "motion" && !/tablette|pc_louis|_mur\b/.test(e)),
+      occupancy: pick("occupancy_sensors", (e) => dc(e) === "occupancy" && /person/.test(e)),
+      tamper: all.filter((e) => dc(e) === "tamper"),
+      battery: all.filter((e) => dc(e) === "battery"),
     };
   }
   _popupSecurity() {
@@ -4379,8 +4470,13 @@ class JmaSecurityCard extends HTMLElement {
       .spi.ok .si ha-icon{color:#34c759;}
       .spi.alert{border-color:rgba(255,59,48,.5);background:rgba(255,59,48,.1);}
       .spi.alert .si{background:#ff3b30;}.spi.alert .si ha-icon{color:#fff;}
+      .spi.live{border-color:rgba(106,163,255,.5);background:rgba(106,163,255,.1);}
+      .spi.live .si{background:#6aa3ff;}.spi.live .si ha-icon{color:#fff;}
+      .spi.warn{border-color:rgba(255,159,10,.5);background:rgba(255,159,10,.1);}
+      .spi.warn .si{background:#ff9f0a;}.spi.warn .si ha-icon{color:#3a2400;}
       .spi .sn{flex:1;min-width:0;font-weight:700;font-size:.77rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .spi .sv{font-size:.65rem;font-weight:800;opacity:.6;white-space:nowrap;}.spi.alert .sv{color:#ff5a4d;opacity:1;}
+      .spi.live .sv{color:#6aa3ff;opacity:1;}.spi.warn .sv{color:#ff9f0a;opacity:1;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="secpanel">
         <div class="spa"><div class="spabadge" id="badge"><ha-icon id="bic" icon="mdi:shield-home"></ha-icon></div>
@@ -4411,9 +4507,43 @@ class JmaSecurityCard extends HTMLElement {
     sect("🔥 Fumée / Incendie", g.smoke, "mdi:smoke-detector-variant", "mdi:smoke-detector-variant-alert", "RAS");
     sect("🚪 Ouvertures", g.door, "mdi:door-closed", "mdi:door-open", "Fermé");
     sect("🏃 Mouvement", g.motion, "mdi:motion-sensor-off", "mdi:motion-sensor", "Calme");
-    this._secTick = () => { this._secItems.forEach(({ e, it, okIcon, alertIcon, okWord }) => { const s = this._st(e); if (!s) return; const on = s.state === "on";
-      it.classList.toggle("alert", on); it.classList.toggle("ok", !on); it.querySelector(".sic").setAttribute("icon", on ? alertIcon : okIcon);
-      it.querySelector(".sv").textContent = on ? "⚠ ALERTE" : okWord; }); };
+    // présence (Frigate) — bleu quand détectée (pas une alerte)
+    this._occItems = [];
+    if (g.occupancy.length) {
+      const l = document.createElement("div"); l.className = "splbl"; l.textContent = "👁️ Présence détectée"; host.appendChild(l);
+      const grid = document.createElement("div"); grid.className = "spgrid"; host.appendChild(grid);
+      g.occupancy.forEach((e) => { const s = this._st(e); if (!s) return; const it = document.createElement("div"); it.className = "spi";
+        it.innerHTML = `<div class="si"><ha-icon class="sic" icon="mdi:account"></ha-icon></div><div class="sn">${this._nm(s, e)}</div><div class="sv"></div>`;
+        grid.appendChild(it); this._occItems.push({ e, it }); });
+    }
+    // système : sabotage + batteries (agrégés)
+    this._sysItems = [];
+    if (g.tamper.length || g.battery.length) {
+      const l = document.createElement("div"); l.className = "splbl"; l.textContent = "🔧 Système"; host.appendChild(l);
+      const grid = document.createElement("div"); grid.className = "spgrid"; host.appendChild(grid);
+      if (g.tamper.length) { const it = document.createElement("div"); it.className = "spi";
+        it.innerHTML = `<div class="si"><ha-icon class="sic" icon="mdi:shield-check"></ha-icon></div><div class="sn">Sabotage</div><div class="sv"></div>`;
+        grid.appendChild(it); this._sysItems.push({ list: g.tamper, it, kind: "tamper" }); }
+      if (g.battery.length) { const it = document.createElement("div"); it.className = "spi";
+        it.innerHTML = `<div class="si"><ha-icon class="sic" icon="mdi:battery"></ha-icon></div><div class="sn">Batteries</div><div class="sv"></div>`;
+        grid.appendChild(it); this._sysItems.push({ list: g.battery, it, kind: "battery" }); }
+    }
+    this._secTick = () => {
+      this._secItems.forEach(({ e, it, okIcon, alertIcon, okWord }) => { const s = this._st(e); if (!s) return; const on = s.state === "on";
+        it.classList.toggle("alert", on); it.classList.toggle("ok", !on); it.querySelector(".sic").setAttribute("icon", on ? alertIcon : okIcon);
+        it.querySelector(".sv").textContent = on ? "⚠ ALERTE" : okWord; });
+      this._occItems.forEach(({ e, it }) => { const s = this._st(e); if (!s) return; const on = s.state === "on";
+        it.classList.toggle("live", on); it.classList.remove("ok");
+        it.querySelector(".sic").setAttribute("icon", on ? "mdi:account-alert" : "mdi:account-off");
+        it.querySelector(".sv").textContent = on ? "● Détecté" : "—"; });
+      this._sysItems.forEach(({ list, it, kind }) => { const n = list.reduce((a, e) => a + (this._st(e) && this._st(e).state === "on" ? 1 : 0), 0);
+        if (kind === "tamper") { it.classList.toggle("alert", n > 0); it.classList.toggle("ok", n === 0);
+          it.querySelector(".sic").setAttribute("icon", n > 0 ? "mdi:shield-alert" : "mdi:shield-check");
+          it.querySelector(".sv").textContent = n > 0 ? n + " ⚠" : "OK"; }
+        else { it.classList.toggle("warn", n > 0); it.classList.toggle("ok", n === 0);
+          it.querySelector(".sic").setAttribute("icon", n > 0 ? "mdi:battery-alert" : "mdi:battery");
+          it.querySelector(".sv").textContent = n > 0 ? n + " faible" + (n > 1 ? "s" : "") : "OK"; } });
+    };
   }
   _updatePanel() {
     const $ = (id) => this.shadowRoot.getElementById(id);
@@ -4844,6 +4974,7 @@ REG("jma-light-card", "JMA Lumière", "Lumière : slider de luminosité, tap = o
 REG("jma-switch-card", "JMA Interrupteur", "Interrupteur : pastille on/off iOS.");
 REG("jma-cover-card", "JMA Volet", "Volet : Ouvrir / Stop / Fermer + position.");
 REG("jma-thermostat-card", "JMA Thermostat", "Climat : consigne ± + modes.");
+REG("jma-climate-tile-card", "JMA Thermostat tuile", "Climat inline (sans pop-up) : consigne XL + modes + temp réelle.");
 REG("jma-climate-dial-card", "JMA Thermostat cadran", "Climat : cadran rond, glisser pour régler.");
 REG("jma-media-card", "JMA Média", "Lecteur média : transport + volume.");
 REG("jma-vacuum-card", "JMA Aspirateur", "Aspirateur : Start / Pause / Dock.");
