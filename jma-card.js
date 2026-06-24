@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.64.0";
+const VERSION = "0.65.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1350,6 +1350,7 @@ class JmaPopup extends HTMLElement {
   set hass(h) { this._hass = h; if (this._built) { jmaApplyTheme(this, h, this._config); this._refresh(); } }
   connectedCallback() {
     this._build();
+    if (this._config && this._config.inline) return;
     requestAnimationFrame(() => this.shadowRoot.getElementById("wrap").classList.add("show"));
     this._onKey = (e) => { if (e.key === "Escape") this._close(); };
     document.addEventListener("keydown", this._onKey);
@@ -1359,6 +1360,7 @@ class JmaPopup extends HTMLElement {
   _domain() { return (this._config.entity || "x.x").split(".")[0]; }
   _kind() { return this._config.kind || this._domain(); }
   _close() {
+    if (this._config && this._config.inline) return;
     if (this._closing) return;
     this._closing = true;
     clearInterval(this._camTimer);
@@ -1392,6 +1394,10 @@ class JmaPopup extends HTMLElement {
         @media(min-width:768px){.back{align-items:center;} .sheet{margin:0;max-height:90vh;}}
         .back.wide .sheet{max-width:640px;}
         .back.xwide .sheet{max-width:860px;}
+        .back.inline{position:static;inset:auto;z-index:auto;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;opacity:1;display:block;padding:0;}
+        .back.inline .sheet{max-width:none;width:100%;margin:0;max-height:none;box-shadow:none;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;border:none;border-radius:0;padding:2px;transform:none;opacity:1;overflow:visible;}
+        .back.inline .grab,.back.inline .x{display:none;}
+        .back.inline #body{overflow:visible;margin:0;padding:0;}
         .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
         @media(max-width:680px){.grid2{grid-template-columns:1fr;}}
         .grid2 .grow{margin:0;}
@@ -1637,8 +1643,9 @@ class JmaPopup extends HTMLElement {
     this.shadowRoot.getElementById("x").addEventListener("click", (e) => { e.stopPropagation(); this._close(); });
     this._built = true;
     jmaApplyTheme(this, this._hass, this._config);
-    if (this._kind() === "sonos" || this._kind() === "lights") this.shadowRoot.getElementById("wrap").classList.add("wide");
-    if (this._kind() === "climates" || this._kind() === "covers" || this._kind() === "security") this.shadowRoot.getElementById("wrap").classList.add("xwide");
+    if (this._config.inline) wrap.classList.add("inline");
+    else if (this._kind() === "sonos" || this._kind() === "lights") this.shadowRoot.getElementById("wrap").classList.add("wide");
+    else if (this._kind() === "climates" || this._kind() === "covers" || this._kind() === "security") this.shadowRoot.getElementById("wrap").classList.add("xwide");
     this._renderBody();
     this._refresh();
   }
@@ -4886,12 +4893,12 @@ class JmaNavCard extends HTMLElement {
       .navbtn:active{transform:scale(.92);}
       .navbtn.on{background:linear-gradient(135deg,#f3d9b8,#e8c89a);color:#42382a;box-shadow:0 3px 10px rgba(180,140,90,.3);}
       :host(.dark) .navbtn.on{background:var(--jma-grad);color:var(--jma-dark);}
-      @media(max-width:620px){
-        .navdock{max-width:calc(100vw - 16px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:1px;}
+      @media(max-width:760px){
+        .navdock{max-width:calc(100vw - 12px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:0;padding:5px;}
         .navdock::-webkit-scrollbar{display:none;}
-        .navbtn{min-width:0;padding:9px 11px;gap:0;}
+        .navbtn{min-width:0;padding:9px 10px;gap:0;}
         .navbtn span{display:none;}
-        .navbtn ha-icon{--mdc-icon-size:25px;}
+        .navbtn ha-icon{--mdc-icon-size:23px;}
       }
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="navdock" id="dock"></div></ha-card>`;
@@ -4925,7 +4932,19 @@ class JmaGroupCard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
   getCardSize() { return 1; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config);
+    if (this._config.expanded) { if (this._inline) this._inline.hass = h; return; }
+    this._update(); if (this._popup) this._popup.hass = h; }
+  _buildInline() {
+    this.shadowRoot.innerHTML = `<style>:host{display:block;}</style><div id="host"></div>`;
+    const rows = (this._config.rows && this._config.rows.length) ? this._config.rows : null;
+    const ents = rows ? rows.flat() : this._list();
+    const p = document.createElement("jma-card-popup");
+    p.config = { kind: this._KIND, entities: ents, rows: rows, names: this._config.names, name: this._config.name,
+      color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme, inline: true };
+    p.hass = this._hass;
+    this.shadowRoot.getElementById("host").appendChild(p); this._inline = p;
+  }
   _list() {
     if (this._config.entities && this._config.entities.length) return this._config.entities;
     const dom = this._DOMAIN, ex = this._EXCLUDE;
@@ -4944,6 +4963,7 @@ class JmaGroupCard extends HTMLElement {
     return list;
   }
   _build() {
+    if (this._config.expanded) return this._buildInline();
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       .chev{opacity:.4;--mdc-icon-size:22px;flex:none;}</style>` +
