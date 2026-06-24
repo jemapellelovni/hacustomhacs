@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.15.0";
+const VERSION = "0.16.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -142,6 +142,13 @@ const BASE_CSS = `
   /* sparkline sur tuile */
   .spark{position:relative;height:34px;width:100%;}
   .spark svg{width:100%;height:100%;display:block;}
+  /* icônes animées */
+  @keyframes jma-spin{to{transform:rotate(360deg);}}
+  @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  @keyframes jma-bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-2px);}}
+  .spin ha-icon{animation:jma-spin 2.6s linear infinite;transform-origin:center;}
+  .pulse ha-icon{animation:jma-pulse 1.5s ease-in-out infinite;}
+  .bob ha-icon{animation:jma-bob 1.8s ease-in-out infinite;}
 `;
 
 // thème : applique la classe .light sur l'hôte selon la config et le thème HA
@@ -400,6 +407,7 @@ class JmaSwitchCard extends JmaBase {
     this.shadowRoot.querySelector(".name").textContent = this._name(s);
     this.shadowRoot.querySelector(".sub").textContent = on ? "Allumé" : "Éteint";
     this.shadowRoot.getElementById("tile").classList.toggle("on", on);
+    this.shadowRoot.querySelector(".badge").classList.toggle("spin", d === "fan" && on);
   }
 }
 
@@ -494,6 +502,7 @@ class JmaThermostatCard extends JmaBase {
     const act = a.hvac_action ? " · " + (HVAC_ACTION_FR[a.hvac_action] || a.hvac_action) : "";
     this.shadowRoot.querySelector(".sub").textContent = cur + act;
     this.shadowRoot.querySelector(".tile").classList.toggle("on", on);
+    this.shadowRoot.querySelector(".badge").classList.toggle("pulse", ["heating", "cooling", "drying"].includes(a.hvac_action));
     this._dim(this.shadowRoot.querySelector(".tile"), s);
   }
 }
@@ -638,6 +647,7 @@ class JmaVacuumCard extends JmaBase {
       this.shadowRoot.querySelector(".bpc").textContent = bat + "%";
     } else bb.hidden = true;
     tile.classList.toggle("on", active);
+    this.shadowRoot.querySelector(".badge").classList.toggle("spin", active);
     this._dim(tile, s);
     this.shadowRoot.querySelector('[data-a="start"]').classList.toggle("accent", !active);
     this.shadowRoot.querySelector('[data-a="pause"]').classList.toggle("accent", active);
@@ -1666,6 +1676,7 @@ class JmaEvCard extends HTMLElement {
     this.shadowRoot.getElementById("ic").setAttribute("icon", icon);
     this.shadowRoot.getElementById("sub").textContent = moving ? "En route" : isCharging ? "En charge" : isPlugged ? "Branchée" : "Débranchée";
     this.shadowRoot.getElementById("tile").classList.toggle("on", isCharging || climOn || moving);
+    this.shadowRoot.querySelector(".badge").classList.toggle("pulse", isCharging || climOn);
     this.shadowRoot.querySelector(".badge").style.background = climOn ? "#40c4ff33" : "";
     this.shadowRoot.getElementById("ic").style.color = climOn ? "#40c4ff" : "";
   }
@@ -1802,6 +1813,61 @@ class JmaCameraCard extends HTMLElement {
   }
 }
 customElements.define("jma-camera-card", JmaCameraCard);
+
+// =============================================================================
+//  📹 MULTI-CAMÉRAS (mosaïque)
+// =============================================================================
+class JmaCamerasCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, columns: 2, ...c }; this._cams = c.entities || (c.entity ? [c.entity] : []); }
+  getCardSize() { return Math.max(2, this._cams.length); }
+  static getStubConfig() { return { entities: ["camera.example"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+        .grid{display:grid;grid-template-columns:repeat(${Math.max(1, c.columns)},1fr);gap:6px;}
+        .cam{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:16/9;background:#000;cursor:pointer;}
+        .cam img{width:100%;height:100%;object-fit:cover;display:block;}
+        .ov{position:absolute;left:0;right:0;bottom:0;padding:6px 8px;display:flex;align-items:center;gap:6px;
+          background:linear-gradient(0deg,rgba(0,0,0,.6),transparent);color:#fff;}
+        .nm{font-weight:700;font-size:.72rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .rec{display:flex;align-items:center;gap:4px;font-size:.6rem;font-weight:700;}
+        .rd{width:7px;height:7px;border-radius:50%;background:#ff3b30;animation:jmablink 1.4s infinite;}
+        @keyframes jmablink{50%{opacity:.2;}}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="grid" id="grid"></div></ha-card>`;
+    const grid = this.shadowRoot.getElementById("grid");
+    this._cams.forEach((eid) => {
+      const cam = document.createElement("div"); cam.className = "cam"; cam.dataset.e = eid;
+      cam.innerHTML = `<img alt=""><div class="ov"><span class="nm"></span><span class="rec" hidden><span class="rd"></span>REC</span></div>`;
+      cam.addEventListener("click", () => this._openPopup(eid));
+      grid.appendChild(cam);
+    });
+  }
+  _openPopup(entity) {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { entity, color: this._config.color, accent: this._config.accent, dark: this._config.dark };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
+  _update() {
+    this._cams.forEach((eid) => {
+      const s = this._hass.states[eid]; const cam = this.shadowRoot.querySelector(`.cam[data-e="${eid}"]`);
+      if (!cam) return;
+      if (!s) { cam.style.opacity = ".4"; return; }
+      cam.style.opacity = "";
+      if (s.attributes.entity_picture) cam.querySelector("img").src = s.attributes.entity_picture;
+      cam.querySelector(".nm").textContent = (this._config.names && this._config.names[eid]) || s.attributes.friendly_name || eid;
+      cam.querySelector(".rec").hidden = s.state !== "recording";
+    });
+  }
+}
+customElements.define("jma-cameras-card", JmaCamerasCard);
 
 // =============================================================================
 //  🧑‍🤝‍🧑 PRÉSENCE (avatars)
@@ -2259,6 +2325,7 @@ const ED_LABELS = {
   geocode_entities: "Capteurs adresse (ordre des personnes)", distance_entities: "Capteurs distance (ordre des personnes)",
   entities: "Calendriers", days: "Jours", max: "Nb max d'événements", time: "Heure de sortie",
   show_forecast: "Afficher les prévisions", theme: "Thème", graph: "Mini-graphe", hours: "Période (h)",
+  columns: "Colonnes",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -2275,6 +2342,8 @@ function jmaEditorSchema(type) {
     { name: "graph", selector: { boolean: {} } }, num("hours", 1, 168), txt("color"), txt("accent"), themeSel];
   if (t === "custom:jma-room-card") return [
     txt("name"), { name: "icon", selector: { icon: {} } }, ent("entities", null, true, true), txt("color"), txt("accent"), themeSel];
+  if (t === "custom:jma-cameras-card") return [
+    ent("entities", "camera", true, true), num("columns", 1, 4), txt("color"), txt("accent"), themeSel];
 
   if (t === "custom:jma-ev-card") return [
     txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
@@ -2536,6 +2605,7 @@ REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solair
 REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jour.");
 REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
 REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
+REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
