@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.36.0";
+const VERSION = "0.37.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3703,36 +3703,81 @@ class JmaScreensaverCard extends HTMLElement {
     o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:radial-gradient(125% 120% at 50% 10%,#141826 0%,#080a11 58%,#000 100%);color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .7s ease;";
     const st = document.createElement("style");
     st.textContent = `
-      .ss-col{text-align:center;transition:transform 2.5s ease;display:flex;flex-direction:column;align-items:center;gap:1vh;max-width:92vw;}
-      .ss-time{font-weight:200;font-size:15vw;line-height:.9;letter-spacing:-.6vw;text-shadow:0 0 9vw rgba(123,162,255,.14);}
-      .ss-date{font-size:2.7vw;opacity:.5;text-transform:capitalize;letter-spacing:.25vw;margin-top:-.4vh;}
-      .ss-wx{display:inline-flex;gap:1.1vw;align-items:center;font-size:2.7vw;opacity:.8;}
-      .ss-wx ha-icon{--mdc-icon-size:3.2vw;}
-      .ss-sep{width:28vw;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);margin:.6vh 0 1.2vh;}
-      .ss-energy{display:flex;gap:1.8vw;flex-wrap:wrap;justify-content:center;}
-      .ss-pill{display:inline-flex;align-items:center;gap:1vw;padding:1vh 2.6vw;border-radius:99px;background:rgba(255,255,255,.055);
-        border:1px solid rgba(255,255,255,.07);font-size:2.8vw;font-weight:600;}
-      .ss-pill ha-icon{--mdc-icon-size:3.2vw;}
+      .ss-col{text-align:center;transition:transform 2.5s ease;display:flex;flex-direction:column;align-items:center;gap:1vh;max-width:94vw;}
+      .ss-time{font-weight:200;font-size:14vw;line-height:.9;letter-spacing:-.6vw;text-shadow:0 0 9vw rgba(123,162,255,.14);}
+      .ss-date{font-size:2.6vw;opacity:.5;text-transform:capitalize;letter-spacing:.25vw;margin-top:-.4vh;}
+      .ss-wx{display:inline-flex;gap:1.1vw;align-items:center;font-size:2.6vw;opacity:.78;}
+      .ss-wx ha-icon{--mdc-icon-size:3.1vw;}
+      .ss-sep{width:30vw;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);margin:.7vh 0 .9vh;}
+      .ss-edom{display:inline-flex;align-items:center;gap:1vw;font-size:2.5vw;font-weight:800;letter-spacing:.04vw;}
+      .ss-edom ha-icon{--mdc-icon-size:3vw;}
+      .ss-edom.sun{color:#f7b6cb;}.ss-edom.bolt{color:#8fb4ff;}
+      .ss-energy{display:flex;gap:1.6vw;flex-wrap:wrap;justify-content:center;margin-top:.3vh;}
+      .ss-pill{display:inline-flex;align-items:center;gap:1vw;padding:.9vh 2.4vw;border-radius:99px;background:rgba(255,255,255,.05);
+        border:1px solid rgba(255,255,255,.06);font-size:2.6vw;font-weight:600;opacity:.62;transition:all .4s ease;}
+      .ss-pill ha-icon{--mdc-icon-size:3vw;}
       .ss-pill.sun{color:#f7b6cb;}.ss-pill.bolt{color:#8fb4ff;}
-      .ss-agenda{display:flex;flex-direction:column;gap:1vh;margin-top:1.2vh;}
-      .ss-ev{display:flex;align-items:baseline;gap:1.6vw;font-size:2.2vw;}
-      .ss-ev .when{color:#f7b6cb;font-weight:700;white-space:nowrap;min-width:16vw;text-align:right;}
-      .ss-ev .what{opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:54vw;}
+      .ss-pill.dom{opacity:1;transform:scale(1.08);font-weight:800;}
+      .ss-pill.sun.dom{background:rgba(248,165,194,.16);border-color:rgba(248,165,194,.5);box-shadow:0 0 5vw rgba(248,165,194,.22);}
+      .ss-pill.bolt.dom{background:rgba(91,155,255,.16);border-color:rgba(91,155,255,.5);box-shadow:0 0 5vw rgba(91,155,255,.22);}
+      .ss-agenda{display:flex;flex-direction:column;gap:1vh;margin-top:1.6vh;width:62vw;max-width:90vw;}
+      .ss-ev{display:flex;align-items:center;gap:1.8vw;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.06);
+        border-radius:1.6vw;padding:1vh 2vw;text-align:left;}
+      .ss-ev .acc{width:.5vw;align-self:stretch;border-radius:99px;background:#f7b6cb;flex:none;}
+      .ss-ev .day{display:flex;flex-direction:column;align-items:center;min-width:8vw;line-height:1.04;flex:none;}
+      .ss-ev .day .dn{font-size:1.4vw;opacity:.55;text-transform:uppercase;letter-spacing:.12vw;}
+      .ss-ev .day .dd{font-size:2.6vw;font-weight:800;}
+      .ss-ev .info{display:flex;flex-direction:column;min-width:0;flex:1;}
+      .ss-ev .info .ti{font-size:2.1vw;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ss-ev .info .hr{font-size:1.6vw;opacity:.55;}
+      .ss-empty{font-size:2vw;opacity:.4;}
+      .ss-actions{position:absolute;top:3.2vh;right:3vw;display:flex;flex-direction:column;gap:1.3vh;align-items:flex-end;}
+      .ss-act{display:inline-flex;align-items:center;gap:1vw;padding:1.3vh 2.2vw;border-radius:99px;cursor:pointer;
+        background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#fff;font-size:1.9vw;font-weight:700;transition:transform .1s,background .3s,border-color .3s;}
+      .ss-act ha-icon{--mdc-icon-size:2.5vw;color:#f7b6cb;transition:color .3s;}
+      .ss-act:active{transform:scale(.94);}
+      .ss-act.done{background:rgba(120,220,150,.22);border-color:rgba(120,220,150,.5);}
+      .ss-act.done ha-icon{color:#7fe0a0;}
     `;
     const col = document.createElement("div"); col.className = "ss-col";
     col.innerHTML = `<div class="ss-time" id="jct">--:--</div>` +
       (this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : "") +
       `<div class="ss-wx" id="jcw"></div>` +
       `<div class="ss-sep" id="jcsep" style="display:none"></div>` +
+      `<div class="ss-edom" id="jcedom" style="display:none"></div>` +
       `<div class="ss-energy" id="jce"></div>` +
       `<div class="ss-agenda" id="jca"></div>`;
     o.appendChild(st); o.appendChild(col);
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
+    // boutons d'action (haut-droite) : ne ferment PAS la veille
+    const actions = this._config.actions || [];
+    if (actions.length) {
+      const wrap = document.createElement("div"); wrap.className = "ss-actions";
+      ["pointerdown", "touchstart", "click"].forEach((ev) => wrap.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+      actions.forEach((a) => {
+        const b = document.createElement("button"); b.className = "ss-act";
+        b.innerHTML = `<ha-icon icon="${a.icon || "mdi:gesture-tap-button"}"></ha-icon><span>${a.name || ""}</span>`;
+        b.addEventListener("click", (e) => { e.stopPropagation(); this._runAction(a, b); });
+        wrap.appendChild(b);
+      });
+      o.appendChild(wrap);
+    }
     document.body.appendChild(o); this._ovl = o; this._clkEl = col;
     if (window.requestAnimationFrame) requestAnimationFrame(() => { o.style.opacity = "1"; }); else o.style.opacity = "1";
     this._paint(); this._clk = setInterval(() => this._paint(), 1000);
     this._shiftTimer = setInterval(() => this._shiftClock(), 60000);
     this._fetchAgenda(); this._agTimer = setInterval(() => this._fetchAgenda(), 300000);
+  }
+  _runAction(a, b) {
+    try {
+      if (a.scene) this._hass.callService("scene", "turn_on", { entity_id: a.scene });
+      else if (a.script && a.script.includes(".")) this._hass.callService("script", "turn_on", { entity_id: a.script });
+      else if (a.script) this._hass.callService("script", a.script, {});
+      else if (a.service) { const p = a.service.split("."); this._hass.callService(p[0], p[1], a.service_data || a.data || {}); }
+      else if (a.entity) { const d = a.entity.split(".")[0]; if (d === "button") this._hass.callService("button", "press", { entity_id: a.entity }); else if (d === "script") this._hass.callService("script", "turn_on", { entity_id: a.entity }); else if (d === "scene") this._hass.callService("scene", "turn_on", { entity_id: a.entity }); else this._hass.callService("homeassistant", "toggle", { entity_id: a.entity }); }
+      if (window.jmaToast) jmaToast({ title: a.name || "Action", message: "✓ Envoyé", icon: a.icon || "mdi:check", color: a.color || this._config.color });
+      if (b) { b.classList.add("done"); setTimeout(() => b && b.classList.remove("done"), 1300); }
+    } catch (e) {}
   }
   _shiftClock() { if (!this._clkEl) return; const x = ((this._shift) % 2 ? 1 : -1) * 4; const y = ((this._shift++) % 3 - 1) * 4; this._clkEl.style.transform = `translate(${x}vw,${y}vh)`; }
   _wsv(k) { const e = this._config[k]; const s = e && this._hass && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
@@ -3743,18 +3788,26 @@ class JmaScreensaverCard extends HTMLElement {
     const cd = this._ovl.querySelector("#jcd"); if (cd) cd.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     const cw = this._ovl.querySelector("#jcw"); const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
     if (cw && w) { const t = w.attributes.temperature; cw.innerHTML = `<ha-icon icon="${(typeof WEATHER_ICON !== "undefined" && WEATHER_ICON[w.state]) || "mdi:weather-partly-cloudy"}"></ha-icon>${t != null ? Math.round(t) + "°" : ""}`; }
-    // solaire + conso en évidence
-    const ce = this._ovl.querySelector("#jce");
+    // solaire vs EDF, dominance mise en valeur
+    const ce = this._ovl.querySelector("#jce"); const dom = this._ovl.querySelector("#jcedom");
     if (ce) {
       const f = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " kW" : Math.round(v) + " W";
-      const prod = this._wsv("production_entity"); let conso = this._wsv("consumption_entity");
-      if (conso == null) { const g = this._wsv("grid_entity"); if (g != null) conso = Math.max(0, g) + Math.max(0, prod || 0); }
+      const sol = this._wsv("production_entity"); const grid = this._wsv("grid_entity");
+      const haveSol = sol != null, haveGrid = grid != null;
+      const solarDom = haveSol && (!haveGrid || Math.max(0, sol) >= Math.max(0, grid));
       const parts = [];
-      if (prod != null) parts.push(`<span class="ss-pill sun"><ha-icon icon="mdi:solar-power"></ha-icon>${f(Math.max(0, prod))}</span>`);
-      if (conso != null) parts.push(`<span class="ss-pill bolt"><ha-icon icon="mdi:flash"></ha-icon>${f(Math.max(0, conso))}</span>`);
+      if (haveSol) parts.push(`<span class="ss-pill sun${solarDom ? " dom" : ""}"><ha-icon icon="mdi:solar-power"></ha-icon>${f(Math.max(0, sol))}</span>`);
+      if (haveGrid) parts.push(`<span class="ss-pill bolt${!solarDom ? " dom" : ""}"><ha-icon icon="mdi:transmission-tower"></ha-icon>${f(Math.max(0, grid))}</span>`);
       ce.innerHTML = parts.join("");
+      if (dom) {
+        if (haveSol || haveGrid) {
+          dom.className = "ss-edom " + (solarDom ? "sun" : "bolt");
+          dom.innerHTML = solarDom ? `<ha-icon icon="mdi:solar-power"></ha-icon>Solaire dominant` : `<ha-icon icon="mdi:transmission-tower"></ha-icon>Sur le réseau EDF`;
+          dom.style.display = "inline-flex";
+        } else dom.style.display = "none";
+      }
       const sep = this._ovl.querySelector("#jcsep");
-      if (sep) sep.style.display = (parts.length || (this._events && this._events.length)) ? "block" : "none";
+      if (sep) sep.style.display = ((haveSol || haveGrid) || (this._events && this._events.length)) ? "block" : "none";
     }
   }
   async _fetchAgenda() {
@@ -3770,10 +3823,12 @@ class JmaScreensaverCard extends HTMLElement {
   _renderAgenda() {
     const ca = this._ovl && this._ovl.querySelector("#jca"); if (!ca) return;
     if (!this._events || !this._events.length) { ca.innerHTML = ""; return; }
-    const dn = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+    const dn = ["DIM", "LUN", "MAR", "MER", "JEU", "VEN", "SAM"];
     ca.innerHTML = this._events.map((e) => {
-      const day = dn[e.d.getDay()] + " " + e.d.getDate(); const hm = e.allday ? "" : (" " + ("0" + e.d.getHours()).slice(-2) + ":" + ("0" + e.d.getMinutes()).slice(-2));
-      return `<div class="ss-ev"><span class="when">${day}${hm}</span><span class="what">${e.t}</span></div>`;
+      const hr = e.allday ? "Journée" : (("0" + e.d.getHours()).slice(-2) + ":" + ("0" + e.d.getMinutes()).slice(-2));
+      return `<div class="ss-ev"><div class="acc"></div>` +
+        `<div class="day"><span class="dn">${dn[e.d.getDay()]}</span><span class="dd">${e.d.getDate()}</span></div>` +
+        `<div class="info"><span class="ti">${e.t}</span><span class="hr">${hr}</span></div></div>`;
     }).join("");
     const sep = this._ovl.querySelector("#jcsep"); if (sep) sep.style.display = "block";
   }
