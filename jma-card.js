@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.33.0";
+const VERSION = "0.34.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -705,17 +705,22 @@ class JmaMediaCard extends JmaBase {
 class JmaVacuumCard extends JmaBase {
   static getStubConfig() { return { entity: "vacuum.example" }; }
   _build() {
-    this.shadowRoot.innerHTML = this._styleBlock() + CARD_WRAP_OPEN +
+    const extra = `.vmap{width:100%;border-radius:14px;display:block;background:rgba(0,0,0,.12);aspect-ratio:1/1;object-fit:contain;}
+      .vmap[hidden]{display:none;}
+      .fans{margin-top:2px;} .chip.covb{}`;
+    this.shadowRoot.innerHTML = this._styleBlock(extra) + CARD_WRAP_OPEN +
       `<div class="tile flat" id="tile"><div class="content">
          <div class="top"><div class="badge"><ha-icon class="ic"></ha-icon></div>
            <div class="meta"><div class="name"></div><div class="sub"></div></div>
            <div class="bigbat" hidden><ha-icon class="bic"></ha-icon><span class="bpc"></span></div></div>
+         <img class="vmap" id="vmap" hidden>
          <div class="btnrow">
            <button class="cbtn accent" data-a="start" title="Démarrer"><ha-icon icon="mdi:play"></ha-icon></button>
            <button class="cbtn" data-a="pause" title="Pause"><ha-icon icon="mdi:pause"></ha-icon></button>
            <button class="cbtn" data-a="return_to_base" title="Base"><ha-icon icon="mdi:home-import-outline"></ha-icon></button>
            <button class="cbtn" data-a="locate" title="Localiser"><ha-icon icon="mdi:map-marker"></ha-icon></button>
          </div>
+         <div class="chips fans" id="fans"></div>
        </div></div></ha-card>`;
     this._wireHold(this.shadowRoot.querySelector(".tile"), () => this._tapAction());
     this.shadowRoot.querySelectorAll(".cbtn").forEach((b) =>
@@ -766,6 +771,32 @@ class JmaVacuumCard extends JmaBase {
     this._dim(tile, s);
     this.shadowRoot.querySelector('[data-a="start"]').classList.toggle("accent", !active);
     this.shadowRoot.querySelector('[data-a="pause"]').classList.toggle("accent", active);
+    // carte (map_entity = caméra de la carte Roborock)
+    const mapE = this._config.map_entity && this._hass.states[this._config.map_entity];
+    const vmap = this.shadowRoot.getElementById("vmap");
+    if (mapE && mapE.attributes.entity_picture) {
+      const p = mapE.attributes.entity_picture;
+      if (!this._mapAt || Date.now() - this._mapAt > (active ? 6000 : 60000)) {
+        this._mapAt = Date.now();
+        vmap.src = p + (p.includes("?") ? "&" : "?") + "_=" + Math.floor(this._mapAt / (active ? 6000 : 60000));
+      }
+      vmap.hidden = false;
+    } else vmap.hidden = true;
+    // vitesses d'aspiration
+    const fans = this.shadowRoot.getElementById("fans");
+    const list = a.fan_speed_list || [];
+    if (this._config.show_fan !== false && list.length && list.length <= 6) {
+      if (this._fanSig !== list.join(",")) {
+        this._fanSig = list.join(","); fans.innerHTML = "";
+        list.forEach((f) => {
+          const b = document.createElement("button"); b.className = "chip"; b.dataset.f = f; b.tabIndex = 0;
+          b.textContent = f; b.addEventListener("click", () => this._call("vacuum", "set_fan_speed", { entity_id: this._config.entity, fan_speed: f }));
+          fans.appendChild(b);
+        });
+      }
+      fans.querySelectorAll(".chip").forEach((b) => b.classList.toggle("on", b.dataset.f === a.fan_speed));
+      fans.hidden = false;
+    } else { fans.hidden = true; }
   }
 }
 
@@ -3126,6 +3157,10 @@ const ED_LABELS = {
   temperature_entity: "Capteur température", humidity_entity: "Capteur humidité", presence_entity: "Capteur présence",
   lights: "Lumières / interrupteurs", cover: "Volet", climate: "Climatisation", media: "Lecteur média",
   scenes: "Scènes / scripts", badges: "Badges d'ambiance (capteurs)",
+  consumption_entity: "Conso maison du jour (kWh)", grid_import_entity: "Import EDF du jour (kWh)",
+  grid_export_entity: "Revente du jour (kWh)", price: "Prix import (€/kWh)", export_price: "Prix revente (€/kWh)",
+  columns: "Colonnes", alarm_entity: "Centrale d'alarme", cameras: "Caméras", sensors: "Capteurs porte/fenêtre",
+  timeout: "Délai d'inactivité (min)", weather_entity: "Météo", show_date: "Afficher la date", map_entity: "Caméra carte (Roborock)",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
@@ -3140,8 +3175,6 @@ function jmaEditorSchema(type) {
   if (t === "custom:jma-sensor-card") return [
     ent("entity", "sensor", false, true), txt("name"), { name: "icon", selector: { icon: {} } },
     { name: "graph", selector: { boolean: {} } }, num("hours", 1, 168), txt("color"), txt("accent"), themeSel];
-  if (t === "custom:jma-room-card") return [
-    txt("name"), { name: "icon", selector: { icon: {} } }, ent("entities", null, true, true), txt("color"), txt("accent"), themeSel];
   if (t === "custom:jma-cameras-card") return [
     ent("entities", "camera", true, true), num("columns", 1, 4), txt("color"), txt("accent"), themeSel];
   if (t === "custom:jma-sonos-card") return [
@@ -3173,6 +3206,17 @@ function jmaEditorSchema(type) {
     txt("color"), txt("accent")];
   if (t === "custom:jma-agenda-card") return [
     txt("title"), ent("entities", "calendar", true, true), num("days", 1, 31), num("max", 1, 50), txt("color"), txt("accent")];
+  if (t === "custom:jma-energy-today-card") return [
+    txt("title"), ent("consumption_entity", "sensor"), ent("production_entity", "sensor"),
+    ent("grid_import_entity", "sensor"), ent("grid_export_entity", "sensor"),
+    num("price", 0, 5), num("export_price", 0, 5), txt("grid_color"), txt("color"), txt("accent")];
+  if (t === "custom:jma-favorites-card") return [txt("title"), num("columns", 1, 8), txt("color"), txt("accent")];
+  if (t === "custom:jma-security-card") return [
+    txt("name"), ent("alarm_entity", "alarm_control_panel"), ent("cameras", "camera", true),
+    ent("sensors", "binary_sensor", true), txt("color"), txt("accent")];
+  if (t === "custom:jma-screensaver-card") return [
+    num("timeout", 1, 120), ent("weather_entity", "weather"),
+    { name: "show_date", selector: { boolean: {} } }, txt("color"), txt("accent")];
   if (t === "custom:jma-room-card") return [
     txt("name"), { name: "icon", selector: { icon: {} } },
     ent("temperature_entity", "sensor"), ent("humidity_entity", "sensor"), ent("presence_entity", ["binary_sensor", "sensor"]),
@@ -3195,7 +3239,7 @@ function jmaEditorSchema(type) {
   }[t];
   const schema = [ent("entity", dom, false, true), txt("name"), { name: "icon", selector: { icon: {} } }];
   if (t === "custom:jma-card") schema.push(sel("slider", ["auto", "brightness", "temperature", "volume", "position", "none"]));
-  if (t === "custom:jma-vacuum-card") { schema.push(ent("battery_entity", "sensor"), ent("area_entity", "sensor"), ent("status_entity", "sensor")); }
+  if (t === "custom:jma-vacuum-card") { schema.push(ent("battery_entity", "sensor"), ent("area_entity", "sensor"), ent("status_entity", "sensor"), ent("map_entity", "camera")); }
   if (t === "custom:jma-alarm-card") schema.push(txt("code"));
   return schema.concat(tail);
 }
@@ -3394,6 +3438,257 @@ class JmaNotifyCard extends HTMLElement {
 customElements.define("jma-notify-card", JmaNotifyCard);
 
 // =============================================================================
+//  ☀️ ÉNERGIE DU JOUR (kWh + coût € EDF)
+// =============================================================================
+class JmaEnergyTodayCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) {
+    if (!c.consumption_entity && !c.grid_import_entity && !c.production_entity) throw new Error("énergie du jour : au moins une entité kWh requise");
+    this._config = { color: ROSE, accent: BEIGE, dark: DARK, grid_color: "#3b9bff", title: "Énergie du jour", price: null, export_price: null, ...c };
+  }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { title: "Énergie du jour", consumption_entity: "sensor.maison_energie_jour", production_entity: "sensor.solaire_energie_jour", price: 0.25 }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
+  _num(k) { const e = this._config[k]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
+  _price(k, fb) { const e = this._config[k + "_entity"]; const s = e && this._hass.states[e]; if (s) { const v = parseFloat(s.state); if (!isNaN(v)) return v; } return this._config[k] != null ? this._config[k] : fb; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};--edf:${c.grid_color};}
+      .et{display:flex;flex-direction:column;gap:9px;}
+      .ehead{display:flex;align-items:baseline;gap:7px;}
+      .ebig{font-weight:800;font-size:1.7rem;letter-spacing:-1px;}
+      .eunit{font-size:.78rem;opacity:.6;font-weight:700;}
+      .ecost{margin-left:auto;font-weight:800;font-size:1.15rem;}
+      .ebar{display:flex;height:13px;border-radius:99px;overflow:hidden;background:var(--jma-surf3);}
+      .ebar .s{background:var(--jma-rose);transition:width .4s;}.ebar .g{background:var(--edf);transition:width .4s;}
+      .ekv{display:flex;gap:6px;flex-wrap:wrap;}
+      .ecell{flex:1 1 30%;min-width:78px;background:var(--jma-surf3);border-radius:11px;padding:7px 9px;box-sizing:border-box;}
+      .ecell .k{font-size:.63rem;opacity:.6;font-weight:700;}.ecell .v{font-weight:800;font-size:.9rem;margin-top:1px;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="top"><div class="badge"><ha-icon icon="mdi:lightning-bolt-circle"></ha-icon></div>
+          <div class="meta"><div class="name">${c.title}</div><div class="sub" id="sub">Bilan du jour</div></div></div>
+        <div class="et">
+          <div class="ehead"><span class="ebig" id="cons">—</span><span class="eunit">kWh conso</span><span class="ecost" id="cost"></span></div>
+          <div class="ebar"><div class="s" id="bs"></div><div class="g" id="bg"></div></div>
+          <div class="ekv" id="kv"></div>
+        </div>
+      </div></div></ha-card>`;
+  }
+  _update() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const cons = this._num("consumption_entity"), prod = this._num("production_entity"), imp = this._num("grid_import_entity"), exp = this._num("grid_export_entity");
+    let consVal = cons; if (consVal == null) consVal = (imp || 0) + Math.max(0, (prod || 0) - (exp || 0));
+    $("cons").textContent = consVal != null ? (Math.round(consVal * 10) / 10) : "—";
+    const pImp = this._price("price", null), pExp = this._price("export_price", 0);
+    let cost = null;
+    if (imp != null && pImp != null) cost = imp * pImp - (exp || 0) * pExp;
+    else if (cons != null && pImp != null) cost = cons * pImp;
+    $("cost").textContent = cost != null ? (Math.round(cost * 100) / 100).toFixed(2).replace(".", ",") + " €" : "";
+    const solar = Math.max(0, prod != null ? prod - (exp || 0) : 0);
+    const grid = Math.max(0, imp != null ? imp : Math.max(0, consVal - solar));
+    const tot = Math.max(solar + grid, 0.001);
+    $("bs").style.width = (solar / tot * 100) + "%"; $("bg").style.width = (grid / tot * 100) + "%";
+    const auto = consVal > 0 ? Math.round(solar / consVal * 100) : 0;
+    const cells = [];
+    if (prod != null) cells.push(["Solaire", Math.round(prod * 10) / 10 + " kWh"]);
+    if (imp != null) cells.push(["Réseau EDF", Math.round(imp * 10) / 10 + " kWh"]);
+    if (exp != null) cells.push(["Revente", Math.round(exp * 10) / 10 + " kWh"]);
+    cells.push(["Autoconso.", auto + " %"]);
+    $("kv").innerHTML = cells.map(([k, v]) => `<div class="ecell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    $("sub").textContent = prod != null ? "Solaire vs EDF aujourd'hui" : "Consommation du jour";
+  }
+}
+customElements.define("jma-energy-today-card", JmaEnergyTodayCard);
+
+// =============================================================================
+//  ⭐ FAVORIS / LANCEUR
+// =============================================================================
+class JmaFavoritesCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; this._items = c.items || []; }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { items: [{ name: "Tout éteindre", icon: "mdi:power", service: "light.turn_off" }, { name: "Cinéma", icon: "mdi:movie-open", scene: "scene.cinema" }] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
+  _build() {
+    const c = this._config;
+    const tmpl = c.columns ? `repeat(${c.columns},1fr)` : "repeat(auto-fill,minmax(76px,1fr))";
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .fav{display:grid;grid-template-columns:${tmpl};gap:7px;}
+      .fb{background:var(--jma-surf3);border:none;border-radius:14px;padding:11px 6px;cursor:pointer;color:var(--jma-text);
+        display:flex;flex-direction:column;align-items:center;gap:5px;transition:background .2s,transform .08s;}
+      .fb:active{transform:scale(.92);}.fb.on{background:var(--jma-grad);color:var(--jma-dark);}
+      .fb ha-icon{--mdc-icon-size:24px;}
+      .fb span{font-size:.66rem;font-weight:700;text-align:center;line-height:1.12;max-width:100%;overflow:hidden;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        ${c.title ? `<div class="top"><div class="meta"><div class="name">${c.title}</div></div></div>` : ""}
+        <div class="fav" id="fav"></div>
+      </div></div></ha-card>`;
+    const grid = this.shadowRoot.getElementById("fav");
+    this._items.forEach((it, i) => {
+      const b = document.createElement("button"); b.className = "fb"; b.dataset.i = i; b.tabIndex = 0;
+      b.innerHTML = `<ha-icon icon="${it.icon || "mdi:star"}"${it.color ? ` style="color:${it.color}"` : ""}></ha-icon><span>${it.name || ""}</span>`;
+      b.addEventListener("click", () => this._run(it));
+      grid.appendChild(b);
+    });
+  }
+  _run(it) {
+    try {
+      if (it.scene) this._hass.callService("scene", "turn_on", { entity_id: it.scene });
+      else if (it.script) this._hass.callService("script", "turn_on", { entity_id: it.script });
+      else if (it.service) { const p = it.service.split("."); this._hass.callService(p[0], p[1], it.service_data || it.data || {}); }
+      else if (it.navigate) { history.pushState(null, "", it.navigate); window.dispatchEvent(new CustomEvent("location-changed")); }
+      else if (it.entity) this._hass.callService("homeassistant", "toggle", { entity_id: it.entity });
+      if (window.jmaToast && !it.navigate) jmaToast({ title: it.name || "Favori", message: "✓ Activé", icon: it.icon || "mdi:star", color: it.color || this._config.color });
+    } catch (e) {}
+  }
+  _update() {
+    this._items.forEach((it, i) => {
+      const b = this.shadowRoot.querySelector(`.fb[data-i="${i}"]`); if (!b) return;
+      const s = it.entity && this._hass.states[it.entity];
+      const on = s && !["off", "unavailable", "unknown", "closed", "idle", "disarmed", "0"].includes(s.state);
+      b.classList.toggle("on", !!on);
+    });
+  }
+}
+customElements.define("jma-favorites-card", JmaFavoritesCard);
+
+// =============================================================================
+//  🛡️ SÉCURITÉ (alarme + caméras + ouvertures)
+// =============================================================================
+class JmaSecurityCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Sécurité", ...c }; this._cams = c.cameras || []; this._sensors = c.sensors || []; }
+  getCardSize() { return 3; }
+  static getStubConfig() { return { name: "Sécurité", alarm_entity: "alarm_control_panel.maison", cameras: ["camera.entree"], sensors: ["binary_sensor.porte_entree"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  _st(e) { return e && this._hass ? this._hass.states[e] : null; }
+  _popupFor(entity, kind) { if (this._popup || !entity) return; const p = document.createElement("jma-card-popup"); p.config = { entity, kind, color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme }; p.hass = this._hass; p.addEventListener("jma-close", () => { this._popup = null; }); document.body.appendChild(p); this._popup = p; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .tile.sec{flex-direction:column;align-items:stretch;gap:10px;padding:13px;}
+      .secstate{display:flex;align-items:center;gap:11px;cursor:pointer;}
+      .secbadge{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--jma-surf2);flex:none;transition:background .3s;}
+      .secbadge ha-icon{--mdc-icon-size:25px;color:var(--jma-icon);}
+      .secbadge.armed{background:var(--jma-grad);}.secbadge.armed ha-icon{color:var(--jma-dark);}
+      .secbadge.trig{background:#ff3b30;animation:jma-pulse 1s infinite;}.secbadge.trig ha-icon{color:#fff;}
+      @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+      .secmeta{flex:1;min-width:0;}.secmeta b{font-weight:800;font-size:1.04rem;}.secmeta small{display:block;font-size:.74rem;opacity:.65;}
+      .secchev{--mdc-icon-size:20px;opacity:.4;}
+      .sens{display:flex;gap:5px;flex-wrap:wrap;}
+      .sp{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:10px;background:var(--jma-surf3);font-size:.72rem;font-weight:700;}
+      .sp ha-icon{--mdc-icon-size:14px;color:var(--jma-icon);}
+      .sp.open{background:rgba(255,59,48,.16);color:#ff5a4d;}.sp.open ha-icon{color:#ff5a4d;}
+      .cams{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;}
+      .cam{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/10;cursor:pointer;}
+      .cam img{width:100%;height:100%;object-fit:cover;display:block;}
+      .cam span{position:absolute;left:6px;bottom:5px;font-size:.62rem;font-weight:800;color:#fff;text-shadow:0 1px 3px #000;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile sec" id="tile"><div class="content" style="gap:10px;">
+        <div class="secstate" id="secstate"><div class="secbadge" id="secbadge"><ha-icon id="secicon" icon="mdi:shield-home"></ha-icon></div>
+          <div class="secmeta"><b id="secst">—</b><small id="secsub"></small></div>
+          <ha-icon class="secchev" icon="mdi:chevron-right"></ha-icon></div>
+        <div class="sens" id="sens"></div>
+        <div class="cams" id="cams"></div>
+      </div></div></ha-card>`;
+    this.shadowRoot.getElementById("secstate").addEventListener("click", () => this._popupFor(this._config.alarm_entity));
+    const cams = this.shadowRoot.getElementById("cams");
+    this._cams.forEach((eid) => { const d = document.createElement("div"); d.className = "cam"; d.dataset.e = eid; d.innerHTML = `<img><span></span>`; d.addEventListener("click", () => this._popupFor(eid)); cams.appendChild(d); });
+  }
+  _update() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const al = this._st(this._config.alarm_entity), badge = $("secbadge");
+    if (al) {
+      const armed = ("" + al.state).startsWith("armed"), trig = al.state === "triggered";
+      $("secst").textContent = ALARM_FR[al.state] || al.state;
+      $("secsub").textContent = trig ? "⚠ Intrusion détectée" : armed ? "Système armé" : "Système désarmé";
+      $("secicon").setAttribute("icon", trig ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-home-outline");
+      badge.classList.toggle("armed", armed && !trig); badge.classList.toggle("trig", trig);
+    } else $("secst").textContent = "Alarme indisponible";
+    const sens = $("sens"), open = [];
+    this._sensors.forEach((eid) => { const s = this._st(eid); if (s && s.state === "on") open.push(s); });
+    if (this._sensors.length) {
+      sens.hidden = false;
+      sens.innerHTML = open.length
+        ? open.map((s) => `<div class="sp open"><ha-icon icon="${s.attributes.icon || (/(fenetre|window)/i.test(s.entity_id) ? "mdi:window-open-variant" : "mdi:door-open")}"></ha-icon>${s.attributes.friendly_name || s.entity_id}</div>`).join("")
+        : `<div class="sp"><ha-icon icon="mdi:check-circle"></ha-icon>Tout fermé (${this._sensors.length})</div>`;
+    } else sens.hidden = true;
+    this._cams.forEach((eid) => {
+      const d = this.shadowRoot.querySelector(`.cam[data-e="${eid}"]`); if (!d) return;
+      const s = this._st(eid), img = d.querySelector("img"), lab = d.querySelector("span");
+      if (s) { lab.textContent = s.attributes.friendly_name || eid; const p = s.attributes.entity_picture; if (p) { const bust = Math.floor(Date.now() / 10000); if (img.dataset.b != bust) { img.dataset.b = bust; img.src = p + (p.includes("?") ? "&" : "?") + "_=" + bust; } } }
+    });
+  }
+}
+customElements.define("jma-security-card", JmaSecurityCard);
+
+// =============================================================================
+//  🌙 MODE VEILLE (économiseur d'écran tablette)
+// =============================================================================
+class JmaScreensaverCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._idle = 0; this._shift = 0; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, timeout: 3, show_date: true, ...c }; }
+  getCardSize() { return 1; }
+  static getStubConfig() { return { timeout: 3, weather_entity: "weather.maison" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); }
+  connectedCallback() { this._arm(); }
+  disconnectedCallback() { this._disarm(); this._hide(); }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .ssc{display:flex;align-items:center;gap:9px;cursor:pointer;}.ssc .badge{background:var(--jma-surf2);}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="ssc" id="ssc"><div class="badge"><ha-icon icon="mdi:weather-night"></ha-icon></div>
+          <div class="meta"><div class="name">Mode veille</div><div class="sub">après ${c.timeout} min · toucher l'écran pour aperçu</div></div></div>
+      </div></div></ha-card>`;
+    const ssc = this.shadowRoot.getElementById("ssc");
+    if (ssc) ssc.addEventListener("click", () => this._show());
+  }
+  _arm() {
+    if (this._reset) return;
+    this._reset = () => { this._idle = 0; if (this._shown) this._hide(); };
+    this._evs = ["pointerdown", "touchstart", "keydown", "mousemove", "wheel"];
+    if (window.addEventListener) this._evs.forEach((ev) => window.addEventListener(ev, this._reset, { passive: true }));
+    this._timer = setInterval(() => { this._idle++; if (!this._shown && this._idle >= (this._config.timeout || 3) * 60) this._show(); }, 1000);
+  }
+  _disarm() { if (this._reset && window.removeEventListener) this._evs.forEach((ev) => window.removeEventListener(ev, this._reset)); this._reset = null; clearInterval(this._timer); }
+  _show() {
+    if (this._shown) return; this._shown = true;
+    const o = document.createElement("div");
+    o.style.cssText = "position:fixed;inset:0;z-index:2147483600;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .6s ease;";
+    const clk = document.createElement("div"); clk.style.cssText = "text-align:center;transition:transform 2s ease;";
+    clk.innerHTML = `<div id="jct" style="font-weight:300;font-size:17vw;line-height:.95;letter-spacing:-2px;">--:--</div>` +
+      (this._config.show_date ? `<div id="jcd" style="font-size:3.2vw;opacity:.65;margin-top:1vh;text-transform:capitalize;"></div>` : "") +
+      `<div id="jcw" style="font-size:3.4vw;opacity:.85;margin-top:1.4vh;display:flex;gap:10px;align-items:center;justify-content:center;"></div>`;
+    o.appendChild(clk);
+    o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
+    document.body.appendChild(o); this._ovl = o; this._clkEl = clk;
+    if (window.requestAnimationFrame) requestAnimationFrame(() => { o.style.opacity = "1"; }); else o.style.opacity = "1";
+    this._paint(); this._clk = setInterval(() => this._paint(), 1000);
+    this._shiftTimer = setInterval(() => this._shiftClock(), 60000);
+  }
+  _shiftClock() { if (!this._clkEl) return; const x = ((this._shift) % 2 ? 1 : -1) * 6; const y = ((this._shift++) % 3 - 1) * 5; this._clkEl.style.transform = `translate(${x}vw,${y}vh)`; }
+  _paint() {
+    if (!this._ovl) return;
+    const d = new Date(), hh = ("0" + d.getHours()).slice(-2), mm = ("0" + d.getMinutes()).slice(-2);
+    const ct = this._ovl.querySelector("#jct"); if (ct) ct.textContent = hh + ":" + mm;
+    const cd = this._ovl.querySelector("#jcd"); if (cd) cd.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    const cw = this._ovl.querySelector("#jcw"); const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
+    if (cw && w) { const t = w.attributes.temperature; cw.innerHTML = `<ha-icon icon="${(typeof WEATHER_ICON !== "undefined" && WEATHER_ICON[w.state]) || "mdi:weather-partly-cloudy"}"></ha-icon>${t != null ? Math.round(t) + "°" : ""}`; }
+  }
+  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); this._idle = 0; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
+}
+customElements.define("jma-screensaver-card", JmaScreensaverCard);
+
+// =============================================================================
 window.customCards = window.customCards || [];
 const REG = (type, name, description) => window.customCards.push({ type, name, description, preview: true });
 REG("jma-card", "JMA Card (auto)", "Carte universelle flat/iOS : slider horizontal + pop-up.");
@@ -3419,6 +3714,10 @@ REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
 REG("jma-sonos-card", "JMA Sonos", "Multi-room : groupes + volume par pièce.");
 REG("jma-saint-card", "JMA Saint du jour", "Saint du jour (calendrier français).");
+REG("jma-energy-today-card", "JMA Énergie du jour", "Bilan kWh du jour + coût € EDF.");
+REG("jma-favorites-card", "JMA Favoris", "Grille de raccourcis (scènes, services, navigation).");
+REG("jma-security-card", "JMA Sécurité", "Alarme + caméras + ouvertures, vue d'ensemble.");
+REG("jma-screensaver-card", "JMA Mode veille", "Économiseur d'écran horloge pour tablette.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
