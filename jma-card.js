@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.47.0";
+const VERSION = "0.48.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4085,12 +4085,19 @@ class JmaGroupCard extends HTMLElement {
   _list() {
     if (this._config.entities && this._config.entities.length) return this._config.entities;
     const dom = this._DOMAIN, ex = this._EXCLUDE;
-    return Object.keys(this._hass.states).filter((e) => {
+    let list = Object.keys(this._hass.states).filter((e) => {
       if (!e.startsWith(dom + ".")) return false;
       const s = this._hass.states[e]; if (["unavailable", "unknown"].includes(s.state)) return false;
       if (ex && (ex.test(e) || ex.test(s.attributes.friendly_name || ""))) return false;
       return true;
     }).sort();
+    const top = this._TOP || [], bot = this._BOTTOM || [];
+    if (top.length || bot.length) {
+      const rank = (e) => { const t = top.indexOf(e), b = bot.indexOf(e);
+        if (t >= 0) return -1000 + t; if (b >= 0) return 1000 + b; return 0; };
+      list = list.slice().sort((a, b) => rank(a) - rank(b));
+    }
+    return list;
   }
   _build() {
     const c = this._config;
@@ -4125,7 +4132,7 @@ class JmaCoversCard extends JmaGroupCard {
 }
 jmaDef("jma-covers-card", JmaCoversCard);
 class JmaClimatesCard extends JmaGroupCard {
-  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Thermostats", icon: "mdi:thermostat", ...c }; this._DOMAIN = "climate"; this._KIND = "climates"; }
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Thermostats", icon: "mdi:thermostat", ...c }; this._DOMAIN = "climate"; this._KIND = "climates"; this._TOP = c.top || ["climate.salon", "climate.zona_05"]; this._BOTTOM = c.bottom || ["climate.kelud_1750w_blc_chauffage", "climate.group"]; }
   static getStubConfig() { return { name: "Thermostats" }; }
   _update() {
     const list = this._list(); let on = 0;
