@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.38.0";
+const VERSION = "0.39.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3251,7 +3251,7 @@ function jmaEditorSchema(type) {
     ent("sensors", "binary_sensor", true), txt("color"), txt("accent")];
   if (t === "custom:jma-screensaver-card") return [
     num("timeout", 1, 120), ent("weather_entity", "weather"),
-    ent("production_entity", "sensor"), ent("consumption_entity", "sensor"), ent("grid_entity", "sensor"),
+    ent("production_entity", "sensor"), ent("consumption_entity", "sensor"), ent("grid_entity", "sensor"), num("graph_hours", 1, 48),
     ent("agenda_entities", "calendar", true), num("days", 1, 31),
     { name: "show_date", selector: { boolean: {} } }, txt("color"), txt("accent")];
   if (t === "custom:jma-room-card") return [
@@ -3711,24 +3711,27 @@ class JmaScreensaverCard extends HTMLElement {
       .ss-clock{position:absolute;top:3.6vh;left:3.4vw;text-align:left;}
       .ss-time{font-weight:200;font-size:8vw;line-height:.92;letter-spacing:-.3vw;opacity:.88;}
       .ss-date{font-size:1.6vw;opacity:.32;text-transform:capitalize;letter-spacing:.14vw;margin-top:.4vh;}
-      .ss-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:1.6vh;}
-      .ss-edom{display:inline-flex;align-items:center;gap:1.1vw;font-size:2.7vw;font-weight:800;letter-spacing:.04vw;}
-      .ss-edom ha-icon{--mdc-icon-size:3.2vw;}
-      .ss-edom.sun{color:#f7b6cb;}.ss-edom.bolt{color:#8fb4ff;}
-      .ss-energy{display:flex;gap:2vw;flex-wrap:wrap;justify-content:center;}
-      .ss-pill{display:inline-flex;align-items:center;gap:1.1vw;padding:1.2vh 3vw;border-radius:99px;background:rgba(255,255,255,.05);
-        border:1px solid rgba(255,255,255,.06);font-size:3.1vw;font-weight:700;opacity:.6;transition:all .4s ease;}
-      .ss-pill ha-icon{--mdc-icon-size:3.5vw;}
-      .ss-pill.sun{color:#f7b6cb;}.ss-pill.bolt{color:#8fb4ff;}
-      .ss-pill.dom{opacity:1;transform:scale(1.1);}
-      .ss-pill.sun.dom{background:rgba(248,165,194,.16);border-color:rgba(248,165,194,.5);box-shadow:0 0 6vw rgba(248,165,194,.25);}
-      .ss-pill.bolt.dom{background:rgba(91,155,255,.16);border-color:rgba(91,155,255,.5);box-shadow:0 0 6vw rgba(91,155,255,.25);}
-      .ss-wx2{position:absolute;bottom:3vh;right:3vw;display:flex;align-items:center;gap:1.6vw;background:rgba(255,255,255,.05);
-        border:1px solid rgba(255,255,255,.07);border-radius:2vw;padding:1.3vh 2.4vw;}
-      .ss-wx2 ha-icon{--mdc-icon-size:5.2vw;color:#cfe0ff;}
-      .ss-wx2 .wt{font-size:4.2vw;font-weight:300;line-height:1;}
-      .ss-wx2 .wd{font-size:1.4vw;opacity:.55;text-transform:capitalize;}
-      .ss-agenda{position:absolute;left:3vw;bottom:3vh;display:flex;flex-direction:column;gap:.6vh;width:29vw;max-width:40vw;}
+      .ss-center{position:absolute;top:47%;left:50%;transform:translate(-50%,-50%);width:66vw;display:flex;flex-direction:column;align-items:center;gap:1.4vh;}
+      .ss-glegend{display:flex;gap:3.4vw;font-size:2.4vw;font-weight:700;}
+      .ss-gi{display:inline-flex;align-items:center;gap:1vw;opacity:.5;transition:opacity .4s;}
+      .ss-gi.dom{opacity:1;}
+      .ss-gd{width:1.5vw;height:1.5vw;border-radius:50%;flex:none;}
+      .ss-graph{width:100%;height:27vh;position:relative;}
+      .ss-graph svg{width:100%;height:100%;display:block;overflow:visible;}
+      .ss-gmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.6vw;opacity:.4;}
+      .ss-wx2{position:absolute;bottom:3vh;right:3vw;display:flex;align-items:center;gap:1.8vw;background:rgba(255,255,255,.05);
+        border:1px solid rgba(255,255,255,.07);border-radius:2vw;padding:1.3vh 2vw;}
+      .ss-wnow{display:flex;align-items:center;gap:1.3vw;}
+      .ss-wnow ha-icon{--mdc-icon-size:5.2vw;color:#cfe0ff;}
+      .ss-wnow .wt{font-size:4.4vw;font-weight:300;line-height:1;}
+      .ss-wnow .wd{font-size:1.35vw;opacity:.55;text-transform:capitalize;}
+      .wfc{display:flex;gap:1vw;}
+      .wfc .cell{display:flex;flex-direction:column;align-items:center;gap:.2vh;background:rgba(255,255,255,.05);border-radius:1.1vw;padding:.7vh 1.05vw;min-width:4.6vw;}
+      .wfc .cell .ct{font-size:1.02vw;opacity:.5;text-transform:uppercase;letter-spacing:.05vw;}
+      .wfc .cell ha-icon{--mdc-icon-size:2.2vw;color:#cfe0ff;}
+      .wfc .cell .cv{font-size:1.5vw;font-weight:800;}
+      .wfc .cell .cl{font-size:1.02vw;opacity:.5;}
+      .ss-agenda{position:absolute;left:3vw;bottom:3vh;display:flex;flex-direction:column;gap:.6vh;width:27vw;max-width:36vw;}
       .ss-ev{display:flex;align-items:center;gap:1vw;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);border-radius:1vw;padding:.5vh 1vw;}
       .ss-ev .day{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:4.6vw;height:4.2vw;line-height:1;flex:none;
         background:rgba(248,165,194,.14);border-radius:.7vw;}
@@ -3748,8 +3751,8 @@ class JmaScreensaverCard extends HTMLElement {
     const wrap = document.createElement("div"); wrap.className = "ss-wrap";
     wrap.innerHTML =
       `<div class="ss-clock"><div class="ss-time" id="jct">--:--</div>${this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : ""}</div>` +
-      `<div class="ss-center"><div class="ss-edom" id="jcedom" style="display:none"></div><div class="ss-energy" id="jce"></div></div>` +
-      `<div class="ss-wx2" id="jcw" style="display:none"></div>` +
+      `<div class="ss-center"><div class="ss-glegend" id="jcgl"></div><div class="ss-graph" id="jcg"><div class="ss-gmsg">…</div></div></div>` +
+      `<div class="ss-wx2" id="jcw" style="display:none"><div class="ss-wnow" id="jwnow"></div><div class="wfc" id="jwfc"></div></div>` +
       `<div class="ss-agenda" id="jca"></div>`;
     o.appendChild(st); o.appendChild(wrap);
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
@@ -3771,6 +3774,59 @@ class JmaScreensaverCard extends HTMLElement {
     this._paint(); this._clk = setInterval(() => this._paint(), 1000);
     this._shiftTimer = setInterval(() => this._shiftClock(), 60000);
     this._fetchAgenda(); this._agTimer = setInterval(() => this._fetchAgenda(), 300000);
+    this._paintGraph(); this._gTimer = setInterval(() => this._paintGraph(), 300000);
+    this._fetchForecast(); this._fcTimer = setInterval(() => this._fetchForecast(), 1800000);
+  }
+  async _paintGraph() {
+    const host = this._ovl && this._ovl.querySelector("#jcg"); if (!host) return;
+    const prodE = this._config.production_entity, gridE = this._config.grid_entity, consoE = this._config.consumption_entity;
+    const ents = [prodE, gridE, consoE].filter(Boolean); if (!ents.length) { host.innerHTML = `<div class="ss-gmsg">Énergie non configurée</div>`; return; }
+    const hours = this._config.graph_hours || 6;
+    let res; try { res = await jmaHistory(this._hass, ents, hours); } catch (e) { return; }
+    if (!this._ovl) return;
+    const byEnt = {}; (res || []).forEach((arr) => { if (arr && arr.length) byEnt[arr[0].entity_id] = arr; });
+    const toPts = (eid) => { const a = byEnt[eid] || []; return a.map((p) => ({ t: new Date(p.last_changed || p.lc || p.lu).getTime(), v: parseFloat(p.state) })).filter((p) => !isNaN(p.v) && !isNaN(p.t)); };
+    const solP = prodE ? toPts(prodE) : [], gridP = gridE ? toPts(gridE) : [], consP = consoE ? toPts(consoE) : [];
+    let tMin = Infinity, tMax = -Infinity;
+    [solP, gridP, consP].forEach((a) => a.forEach((p) => { tMin = Math.min(tMin, p.t); tMax = Math.max(tMax, p.t); }));
+    if (!isFinite(tMin) || tMin === tMax) { host.innerHTML = `<div class="ss-gmsg">Pas encore d'historique</div>`; return; }
+    const N = 64, span = (tMax - tMin) || 1;
+    const bucket = (pts) => { const b = Array.from({ length: N }, () => ({ s: 0, n: 0 })); pts.forEach((p) => { const i = Math.min(N - 1, Math.floor((p.t - tMin) / span * N)); b[i].s += p.v; b[i].n++; }); const out = []; let last = pts.length ? pts[0].v : 0; for (let i = 0; i < N; i++) { if (b[i].n) last = b[i].s / b[i].n; out.push(Math.max(0, last)); } return out; };
+    const sol = bucket(solP);
+    let conso; if (consoE && consP.length) conso = bucket(consP); else { const gb = bucket(gridP); conso = sol.map((v, i) => v + (gb[i] || 0)); }
+    let vMax = 1; sol.forEach((v) => vMax = Math.max(vMax, v)); conso.forEach((v) => vMax = Math.max(vMax, v));
+    const W = 1000, H = 300, pad = 8;
+    const sx = (i) => pad + (i / (N - 1)) * (W - 2 * pad);
+    const sy = (v) => H - pad - (v / vMax) * (H - 2 * pad);
+    const line = (arr) => arr.map((v, i) => (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(v).toFixed(1)).join(" ");
+    const dSol = line(sol), dCon = line(conso);
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs>` +
+      `<linearGradient id="jgsol" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f8a5c2" stop-opacity=".55"/><stop offset="1" stop-color="#f8a5c2" stop-opacity="0"/></linearGradient></defs>` +
+      `<path d="${dSol} L ${sx(N - 1).toFixed(1)} ${H - pad} L ${sx(0).toFixed(1)} ${H - pad} Z" fill="url(#jgsol)"/>` +
+      `<path d="${dSol}" fill="none" stroke="#f8a5c2" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>` +
+      `<path d="${dCon}" fill="none" stroke="#7fb0ff" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  }
+  async _fetchForecast() {
+    const e = this._config.weather_entity; if (!e || !this._hass) return;
+    const get = async (type) => {
+      try { const r = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type }, target: { entity_id: e }, return_response: true }); return (r && r.response && r.response[e] && r.response[e].forecast) || []; } catch (_) { return null; }
+    };
+    let daily = await get("daily");
+    if (daily == null) { const s = this._hass.states[e]; daily = (s && s.attributes.forecast) || []; }
+    let hourly = await get("hourly"); if (hourly == null) hourly = [];
+    this._fcDaily = daily; this._fcHourly = hourly; this._renderWeather();
+  }
+  _renderWeather() {
+    const host = this._ovl && this._ovl.querySelector("#jwfc"); if (!host) return;
+    const daily = this._fcDaily || [], hourly = this._fcHourly || [];
+    const t = (v) => v != null ? Math.round(v) + "°" : "—";
+    const cells = [];
+    if (daily[0]) cells.push(`<div class="cell"><div class="ct">Auj.</div><div class="cv">${t(daily[0].temperature)}</div><div class="cl">${t(daily[0].templow)}</div></div>`);
+    const now = Date.now();
+    const fut = hourly.filter((h) => new Date(h.datetime).getTime() > now);
+    [1, 3, 5].forEach((i) => { const h = fut[i]; if (h) { const dt = new Date(h.datetime); cells.push(`<div class="cell"><div class="ct">${("0" + dt.getHours()).slice(-2)}h</div><ha-icon icon="${WEATHER_ICON[h.condition] || "mdi:weather-partly-cloudy"}"></ha-icon><div class="cv">${t(h.temperature)}</div></div>`); } });
+    if (daily[1]) cells.push(`<div class="cell"><div class="ct">Demain</div><ha-icon icon="${WEATHER_ICON[daily[1].condition] || "mdi:weather-partly-cloudy"}"></ha-icon><div class="cv">${t(daily[1].temperature)}</div><div class="cl">${t(daily[1].templow)}</div></div>`);
+    host.innerHTML = cells.join("");
   }
   _runAction(a, b) {
     try {
@@ -3790,34 +3846,27 @@ class JmaScreensaverCard extends HTMLElement {
     const d = new Date(), hh = ("0" + d.getHours()).slice(-2), mm = ("0" + d.getMinutes()).slice(-2);
     const ct = this._ovl.querySelector("#jct"); if (ct) ct.textContent = hh + ":" + mm;
     const cd = this._ovl.querySelector("#jcd"); if (cd) cd.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-    const cw = this._ovl.querySelector("#jcw"); const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
+    const cw = this._ovl.querySelector("#jcw"); const nowEl = this._ovl.querySelector("#jwnow");
+    const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
     if (cw) {
-      if (w) {
-        const WXFR = { "clear-night": "Nuit claire", cloudy: "Nuageux", fog: "Brouillard", hail: "Grêle", lightning: "Orage", "lightning-rainy": "Orageux", partlycloudy: "Éclaircies", pouring: "Pluie forte", rainy: "Pluvieux", snowy: "Neige", "snowy-rainy": "Neige/pluie", sunny: "Ensoleillé", windy: "Venteux", "windy-variant": "Venteux", exceptional: "Exceptionnel" };
+      if (w && nowEl) {
         const t = w.attributes.temperature;
-        cw.innerHTML = `<ha-icon icon="${(typeof WEATHER_ICON !== "undefined" && WEATHER_ICON[w.state]) || "mdi:weather-partly-cloudy"}"></ha-icon>` +
-          `<div><div class="wt">${t != null ? Math.round(t) + "°" : "—"}</div><div class="wd">${WXFR[w.state] || w.state}</div></div>`;
+        nowEl.innerHTML = `<ha-icon icon="${WEATHER_ICON[w.state] || "mdi:weather-partly-cloudy"}"></ha-icon>` +
+          `<div><div class="wt">${t != null ? Math.round(t) + "°" : "—"}</div><div class="wd">${WEATHER_FR[w.state] || w.state}</div></div>`;
         cw.style.display = "flex";
       } else cw.style.display = "none";
     }
-    // solaire vs EDF, dominance mise en valeur
-    const ce = this._ovl.querySelector("#jce"); const dom = this._ovl.querySelector("#jcedom");
-    if (ce) {
+    // légende live du graphe : solaire vs conso, plus grosse = dominante
+    const gl = this._ovl.querySelector("#jcgl");
+    if (gl) {
       const f = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace(".", ",") + " kW" : Math.round(v) + " W";
       const sol = this._wsv("production_entity"); const grid = this._wsv("grid_entity");
-      const haveSol = sol != null, haveGrid = grid != null;
-      const solarDom = haveSol && (!haveGrid || Math.max(0, sol) >= Math.max(0, grid));
+      let conso = this._wsv("consumption_entity");
+      if (conso == null && (sol != null || grid != null)) conso = Math.max(0, sol || 0) + Math.max(0, grid || 0);
       const parts = [];
-      if (haveSol) parts.push(`<span class="ss-pill sun${solarDom ? " dom" : ""}"><ha-icon icon="mdi:solar-power"></ha-icon>${f(Math.max(0, sol))}</span>`);
-      if (haveGrid) parts.push(`<span class="ss-pill bolt${!solarDom ? " dom" : ""}"><ha-icon icon="mdi:transmission-tower"></ha-icon>${f(Math.max(0, grid))}</span>`);
-      ce.innerHTML = parts.join("");
-      if (dom) {
-        if (haveSol || haveGrid) {
-          dom.className = "ss-edom " + (solarDom ? "sun" : "bolt");
-          dom.innerHTML = solarDom ? `<ha-icon icon="mdi:solar-power"></ha-icon>Solaire dominant` : `<ha-icon icon="mdi:transmission-tower"></ha-icon>Sur le réseau EDF`;
-          dom.style.display = "inline-flex";
-        } else dom.style.display = "none";
-      }
+      if (sol != null) parts.push(`<span class="ss-gi${conso != null && Math.max(0, sol) >= conso ? " dom" : ""}"><span class="ss-gd" style="background:#f8a5c2"></span>Solaire ${f(Math.max(0, sol))}</span>`);
+      if (conso != null) parts.push(`<span class="ss-gi${sol == null || conso > Math.max(0, sol) ? " dom" : ""}"><span class="ss-gd" style="background:#7fb0ff"></span>Conso ${f(Math.max(0, conso))}</span>`);
+      gl.innerHTML = parts.join("");
     }
   }
   async _fetchAgenda() {
@@ -3845,7 +3894,7 @@ class JmaScreensaverCard extends HTMLElement {
         `<div class="info"><span class="ti">${e.t}</span><span class="hr">${hr}</span></div></div>`;
     }).join("");
   }
-  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); this._idle = 0; this._actWrap = null; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
+  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); clearInterval(this._gTimer); clearInterval(this._fcTimer); this._idle = 0; this._actWrap = null; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
 jmaDef("jma-screensaver-card", JmaScreensaverCard);
 
