@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.25.0";
+const VERSION = "0.26.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -1158,6 +1158,11 @@ class JmaPopup extends HTMLElement {
         .btn:hover{background:rgba(248,165,194,.18);}
         .btn.primary{background:var(--jma-grad);color:var(--jma-dark);}
         .btn.on{background:var(--jma-grad);color:var(--jma-dark);}
+        .stabs{display:flex;gap:4px;background:rgba(255,255,255,.06);padding:4px;border-radius:14px;margin-bottom:4px;}
+        .stab{flex:1;border:none;background:none;color:rgba(255,255,255,.55);font-weight:600;font-size:.84rem;padding:9px 6px;border-radius:11px;cursor:pointer;transition:all .18s;}
+        .stab:hover{color:rgba(255,255,255,.85);}
+        .stab.on{background:var(--jma-grad);color:var(--jma-dark);}
+        .spane[hidden]{display:none;}
         .transport{display:flex;justify-content:center;gap:18px;align-items:center;}
         .tbtn{width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;background:rgba(255,255,255,.08);color:#fff;display:flex;align-items:center;justify-content:center;}
         .tbtn ha-icon{--mdc-icon-size:26px;}
@@ -1199,7 +1204,8 @@ class JmaPopup extends HTMLElement {
         .pchip.on{background:var(--jma-grad);color:var(--jma-dark);font-weight:700;}
         .camimg{width:100%;border-radius:16px;display:block;background:#000;aspect-ratio:16/9;object-fit:cover;}
         .camlive{border-radius:16px;overflow:hidden;background:#000;}
-        .livecard{display:block;--ha-card-border-radius:16px;--ha-card-box-shadow:none;--ha-card-border-width:0;}
+        .livecard{display:block;width:100%;--ha-card-border-radius:16px;--ha-card-box-shadow:none;--ha-card-border-width:0;}
+        .livecard video,.livecard img{display:block;width:100%;border-radius:16px;}
         .graph{--ha-card-background:transparent;--card-background-color:transparent;background:transparent;display:block;}
         .gw{position:relative;height:90px;touch-action:none;cursor:crosshair;}
         .gw svg{width:100%;height:100%;display:block;}
@@ -1278,6 +1284,7 @@ class JmaPopup extends HTMLElement {
     if (v && !this._editing) v.value = Math.round((s.attributes.volume_level || 0) * 100);
     const cam = this.shadowRoot.getElementById("cam");
     if (cam && s.attributes.entity_picture) cam.src = s.attributes.entity_picture;
+    if (this._camStream) { this._camStream.hass = this._hass; this._camStream.stateObj = s; }
     (this._graphs || []).forEach((g) => (g.hass = this._hass));
   }
   _popupIcon() {
@@ -1643,31 +1650,39 @@ class JmaPopup extends HTMLElement {
   }
   _browse(ent, type, id) { return this._hass.callWS({ type: "media_player/browse_media", entity_id: ent, media_content_type: type, media_content_id: id }); }
   _sonosBody(body) {
-    this._sSliders = {};
+    this._sSliders = {}; this._sAudioNums = null; this._sAudioSws = null;
     body.innerHTML = "";
-    // favoris
+    // barre d'onglets
+    const tabs = document.createElement("div"); tabs.className = "stabs";
+    tabs.innerHTML = `<button class="stab on" data-t="play">Lecture</button>
+      <button class="stab" data-t="rooms">Pièces</button>
+      <button class="stab" data-t="audio" id="staudio">Audio</button>`;
+    body.appendChild(tabs);
+    const mk = (t) => { const p = document.createElement("div"); p.className = "spane"; p.dataset.p = t; if (t !== "play") p.hidden = true; body.appendChild(p); return p; };
+    const pPlay = mk("play"), pRooms = mk("rooms"), pAudio = mk("audio");
+    tabs.querySelectorAll(".stab").forEach((b) => b.addEventListener("click", () => {
+      tabs.querySelectorAll(".stab").forEach((x) => x.classList.toggle("on", x === b));
+      [pPlay, pRooms, pAudio].forEach((p) => { p.hidden = p.dataset.p !== b.dataset.t; });
+    }));
+    // --- Onglet Lecture : favoris + lecture aléatoire/répétition
     const favRow = document.createElement("div"); favRow.className = "row";
     favRow.innerHTML = `<div class="lbl"><span>Favoris</span></div><div class="favs" id="favs"><span style="opacity:.5;font-size:.78rem;">chargement…</span></div>`;
-    body.appendChild(favRow);
-    if (this._config.favorites !== false) this._loadFavoritesPopup();
-    else this.shadowRoot.getElementById("favs").innerHTML = "";
-    // shuffle / repeat
+    pPlay.appendChild(favRow);
     const sr = document.createElement("div"); sr.className = "row shrep";
     sr.innerHTML = `<button class="shb" id="shuffle"><ha-icon icon="mdi:shuffle"></ha-icon></button>
       <button class="shb" id="repeat"><ha-icon class="ri" icon="mdi:repeat"></ha-icon></button>`;
     sr.querySelector("#shuffle").addEventListener("click", () => { const m = this._sonosMaster(); this._mp("shuffle_set", { entity_id: m, shuffle: !this._hass.states[m].attributes.shuffle }); });
     sr.querySelector("#repeat").addEventListener("click", () => { const m = this._sonosMaster(); const cur = this._hass.states[m].attributes.repeat || "off"; this._mp("repeat_set", { entity_id: m, repeat: { off: "all", all: "one", one: "off" }[cur] }); });
-    body.appendChild(sr);
-    // group actions
+    pPlay.appendChild(sr);
+    if (this._config.favorites !== false) this._loadFavoritesPopup();
+    else this.shadowRoot.getElementById("favs").innerHTML = "";
+    // --- Onglet Pièces : grouper + volumes
     const ga = document.createElement("div"); ga.className = "row ga";
     ga.innerHTML = `<button class="gab" id="ga"><ha-icon icon="mdi:link-variant"></ha-icon>Tout grouper</button>
       <button class="gab" id="ua"><ha-icon icon="mdi:link-variant-off"></ha-icon>Séparer</button>`;
     ga.querySelector("#ga").addEventListener("click", () => { const m = this._sonosMaster(); const o = this._spkList().filter((e) => e !== m && this._hass.states[e]); if (o.length) this._mp("join", { entity_id: m, group_members: o }); });
     ga.querySelector("#ua").addEventListener("click", () => { this._spkList().forEach((e) => { if (this._hass.states[e]) this._mp("unjoin", { entity_id: e }); }); });
-    body.appendChild(ga);
-    // pièces
-    const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.style.marginTop = "6px"; lbl.innerHTML = `<span>Pièces & volumes</span>`;
-    body.appendChild(lbl);
+    pRooms.appendChild(ga);
     this._spkList().forEach((eid) => {
       const row = document.createElement("div"); row.className = "sroom"; row.dataset.e = eid;
       const lk = document.createElement("button"); lk.className = "slk"; lk.innerHTML = `<ha-icon icon="mdi:link-variant"></ha-icon>`;
@@ -1677,9 +1692,11 @@ class JmaPopup extends HTMLElement {
       mute.addEventListener("click", () => { const s = this._hass.states[eid]; this._mp("volume_mute", { entity_id: eid, is_volume_muted: !(s && s.attributes.is_volume_muted) }); });
       const sl = jmaSlider({ icon: "mdi:volume-high", fmt: (v) => v + "%", onCommit: (v) => this._mp("volume_set", { entity_id: eid, volume_level: v / 100 }) });
       this._sSliders[eid] = sl;
-      row.append(lk, nm, mute, sl); body.appendChild(row);
+      row.append(lk, nm, mute, sl); pRooms.appendChild(row);
     });
-    this._sonosAudio(body);
+    // --- Onglet Audio (masqué s'il n'y a aucun réglage)
+    const hasAudio = this._sonosAudio(pAudio);
+    if (!hasAudio) { const t = tabs.querySelector("#staudio"); if (t) t.remove(); }
     this._sonosTick();
   }
   _audioLabel(fn) {
@@ -1692,7 +1709,7 @@ class JmaPopup extends HTMLElement {
   }
   _fmtNum(v) { const n = parseFloat(v); return isNaN(n) ? v : (Math.round(n * 10) / 10).toString(); }
   _sonosAudio(body) {
-    const master = this._sonosMaster(); if (!master) return;
+    const master = this._sonosMaster(); if (!master) return false;
     const prefix = (master.split(".")[1] || "") + "_";
     const KW = /(basses|aigu|caisson|gain|loudness|crossfade|nuit|dialogue|surround|balance)/i;
     const st = this._hass.states, nums = [], sws = [];
@@ -1702,9 +1719,7 @@ class JmaPopup extends HTMLElement {
       if (id.startsWith("number.")) nums.push(id);
       else if (id.startsWith("switch.")) sws.push(id);
     });
-    if (!nums.length && !sws.length) return;
-    const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.style.marginTop = "6px";
-    lbl.innerHTML = `<span>Réglages audio</span>`; body.appendChild(lbl);
+    if (!nums.length && !sws.length) return false;
     this._sAudioNums = {};
     nums.sort().forEach((id) => {
       const s = st[id], a = s.attributes;
@@ -1721,7 +1736,9 @@ class JmaPopup extends HTMLElement {
       this._sAudioNums[id] = { r, bv };
     });
     if (sws.length) {
-      const cr = document.createElement("div"); cr.className = "row chiprow"; this._sAudioSws = sws;
+      const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.style.marginTop = "4px"; lbl.innerHTML = `<span>Options</span>`;
+      body.appendChild(lbl);
+      const cr = document.createElement("div"); cr.className = "row chiprow"; cr.style.marginTop = "0"; this._sAudioSws = sws;
       sws.sort().forEach((id) => {
         const s = st[id], b = document.createElement("button"); b.className = "pchip"; b.dataset.sw = id;
         b.textContent = this._audioLabel(s.attributes.friendly_name); b.classList.toggle("on", s.state === "on");
@@ -1730,6 +1747,7 @@ class JmaPopup extends HTMLElement {
       });
       body.appendChild(cr);
     }
+    return true;
   }
   async _loadFavoritesPopup() {
     const ent = this._spkList().find((e) => this._hass.states[e]); if (!ent) return;
@@ -1827,20 +1845,32 @@ class JmaPopup extends HTMLElement {
     } catch (e) {}
   }
   async _cameraBody(body) {
-    const s = this._s;
+    const s = this._s; this._camStream = null;
     const row = document.createElement("div"); row.className = "row camlive";
     body.appendChild(row);
-    // flux en direct (HLS/WebRTC géré par HA), repli sur snapshot rafraîchi
     let live = false;
+    // 1) élément natif HA de streaming = vrai direct (HLS/WebRTC)
     try {
-      if (window.loadCardHelpers) {
-        const h = await window.loadCardHelpers();
-        const el = h.createCardElement({ type: "picture-entity", entity: this._config.entity,
-          camera_image: this._config.entity, camera_view: "live", show_name: false, show_state: false });
-        el.hass = this._hass; el.classList.add("livecard");
-        row.appendChild(el); (this._graphs = this._graphs || []).push(el); live = true;
+      if (customElements.get("ha-camera-stream")) {
+        const el = document.createElement("ha-camera-stream");
+        el.hass = this._hass; el.stateObj = s; el.muted = true; el.allowExoPlayer = true;
+        el.classList.add("livecard");
+        row.appendChild(el); this._camStream = el; live = true;
       }
-    } catch (e) {}
+    } catch (e) { live = false; }
+    // 2) repli : carte picture-entity en mode live
+    if (!live) {
+      try {
+        if (window.loadCardHelpers) {
+          const h = await window.loadCardHelpers();
+          const el = h.createCardElement({ type: "picture-entity", entity: this._config.entity,
+            camera_image: this._config.entity, camera_view: "live", show_name: false, show_state: false });
+          el.hass = this._hass; el.classList.add("livecard");
+          row.appendChild(el); (this._graphs = this._graphs || []).push(el); live = true;
+        }
+      } catch (e) {}
+    }
+    // 3) repli ultime : snapshot rafraîchi
     if (!live) {
       row.innerHTML = `<img class="camimg" id="cam" src="${s.attributes.entity_picture || ""}">`;
       clearInterval(this._camTimer);
