@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.31.0";
+const VERSION = "0.32.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -1255,6 +1255,22 @@ class JmaPopup extends HTMLElement {
         input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;margin-top:2px;border-radius:50%;background:var(--p-knob);box-shadow:0 2px 8px rgba(0,0,0,.4);}
         input[type=range]::-moz-range-track{height:34px;border-radius:14px;background:var(--p-track);}
         input[type=range]::-moz-range-thumb{width:30px;height:30px;border:none;border-radius:50%;background:var(--p-knob);}
+        .climctl{margin:14px 0 8px;}
+        .climhead{display:flex;align-items:center;justify-content:center;gap:20px;}
+        .climset{text-align:center;min-width:104px;}
+        .climset .cbig{font-weight:800;font-size:2.5rem;letter-spacing:-1.5px;line-height:1;}
+        .climset .clbl{font-size:.68rem;opacity:.6;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-top:4px;}
+        .climstep{width:46px;height:46px;border-radius:50%;border:none;cursor:pointer;background:var(--p-surf);color:var(--p-text);display:flex;align-items:center;justify-content:center;flex:none;transition:transform .08s;}
+        .climstep:active{transform:scale(.9);}.climstep ha-icon{--mdc-icon-size:24px;}
+        .climreal{display:flex;align-items:center;justify-content:center;gap:8px;margin:12px 0 16px;font-size:.86rem;font-weight:700;}
+        .climreal ha-icon{--mdc-icon-size:17px;color:var(--jma-rose);}
+        .climreal .cact{padding:2px 10px;border-radius:8px;background:var(--p-surf);font-size:.74rem;font-weight:700;}
+        .ctrack{position:relative;height:42px;border-radius:14px;background:var(--p-track);cursor:pointer;touch-action:none;}
+        .cfill{position:absolute;left:0;top:0;bottom:0;border-radius:14px;background:linear-gradient(90deg,var(--jma-blue),var(--jma-rose));width:0%;pointer-events:none;transition:width .15s;}
+        .cthumb{position:absolute;top:50%;width:28px;height:28px;border-radius:50%;background:var(--p-knob);box-shadow:0 2px 9px rgba(0,0,0,.4);transform:translate(-50%,-50%);pointer-events:none;transition:left .15s;z-index:2;}
+        .creal{position:absolute;top:-6px;bottom:-6px;width:3px;border-radius:3px;background:var(--p-text);transform:translateX(-50%);pointer-events:none;z-index:3;}
+        .creal::after{content:attr(data-t);position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:.62rem;font-weight:800;white-space:nowrap;}
+        .cscale{display:flex;justify-content:space-between;font-size:.64rem;opacity:.5;font-weight:700;margin-top:8px;}
         .swatches{display:flex;gap:10px;flex-wrap:wrap;}
         .sw{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid var(--p-line);transition:transform .2s;}
         .sw:hover{transform:scale(1.12);}
@@ -1396,6 +1412,7 @@ class JmaPopup extends HTMLElement {
     const cam = this.shadowRoot.getElementById("cam");
     if (cam && s.attributes.entity_picture) cam.src = s.attributes.entity_picture;
     if (this._camStream) { this._camStream.hass = this._hass; this._camStream.stateObj = s; }
+    if (this._climTick) this._climTick();
     (this._graphs || []).forEach((g) => (g.hass = this._hass));
   }
   _popupIcon() {
@@ -1414,7 +1431,7 @@ class JmaPopup extends HTMLElement {
   }
   _renderBody() {
     const body = this.shadowRoot.getElementById("body");
-    body.innerHTML = ""; this._graphs = [];
+    body.innerHTML = ""; this._graphs = []; this._climTick = null;
     if (this._kind() === "ev") return this._evBody(body);
     if (this._kind() === "energy") return this._energyBody(body);
     if (this._kind() === "agenda") return this._agendaBody(body);
@@ -1565,9 +1582,43 @@ class JmaPopup extends HTMLElement {
   }
   _climateBody(body) {
     const s = this._s, a = s.attributes;
-    body.appendChild(this._slider("temp", "Consigne", a.temperature ?? a.min_temp ?? 20, (x) => x + "°",
-      (x) => this._call("climate", "set_temperature", { entity_id: this._config.entity, temperature: x }),
-      a.min_temp ?? 7, a.max_temp ?? 35, a.target_temp_step || 0.5));
+    const min = a.min_temp ?? 7, max = a.max_temp ?? 35, step = a.target_temp_step || 0.5;
+    const ctl = document.createElement("div"); ctl.className = "row climctl";
+    ctl.innerHTML = `
+      <div class="climhead">
+        <button class="climstep" id="tdn"><ha-icon icon="mdi:minus"></ha-icon></button>
+        <div class="climset"><div class="cbig" id="tval">—</div><div class="clbl">Consigne</div></div>
+        <button class="climstep" id="tup"><ha-icon icon="mdi:plus"></ha-icon></button>
+      </div>
+      <div class="climreal"><ha-icon icon="mdi:thermometer"></ha-icon><span id="treal">—</span><span class="cact" id="tact"></span></div>
+      <div class="ctrack" id="ctrack"><div class="cfill" id="cfill"></div><div class="creal" id="creal"></div><div class="cthumb" id="cthumb"></div></div>
+      <div class="cscale"><span>${min}°</span><span>${max}°</span></div>`;
+    body.appendChild(ctl);
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const fmt = (v) => (step < 1 ? v.toFixed(1) : "" + Math.round(v)) + "°";
+    const pct = (v) => Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
+    const track = $("ctrack");
+    let dragging = false, pending = a.temperature ?? a.current_temperature ?? min;
+    const paintSet = (v) => { $("cfill").style.width = pct(v) + "%"; $("cthumb").style.left = pct(v) + "%"; $("tval").textContent = fmt(v); };
+    const snap = (v) => Math.round(Math.max(min, Math.min(max, Math.round(v / step) * step)) * 10) / 10;
+    const commit = (v) => this._call("climate", "set_temperature", { entity_id: this._config.entity, temperature: snap(v) });
+    const tFromX = (e) => { const r = track.getBoundingClientRect(); const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); return snap(min + p * (max - min)); };
+    track.addEventListener("pointerdown", (e) => { e.stopPropagation(); dragging = true; try { track.setPointerCapture(e.pointerId); } catch (_) {} pending = tFromX(e); paintSet(pending); });
+    track.addEventListener("pointermove", (e) => { if (!dragging) return; pending = tFromX(e); paintSet(pending); });
+    const end = () => { if (!dragging) return; dragging = false; commit(pending); };
+    track.addEventListener("pointerup", end); track.addEventListener("pointercancel", end);
+    $("tup").addEventListener("click", () => { pending = snap((this._s.attributes.temperature ?? min) + step); paintSet(pending); commit(pending); });
+    $("tdn").addEventListener("click", () => { pending = snap((this._s.attributes.temperature ?? min) - step); paintSet(pending); commit(pending); });
+    this._climTick = () => {
+      const s2 = this._s; if (!s2) return; const a2 = s2.attributes;
+      if (!dragging && a2.temperature != null) paintSet(a2.temperature);
+      const cr = $("creal");
+      if (cr && a2.current_temperature != null) { cr.style.display = "block"; cr.style.left = pct(a2.current_temperature) + "%"; cr.setAttribute("data-t", fmt(a2.current_temperature)); }
+      else if (cr) cr.style.display = "none";
+      if ($("treal")) $("treal").textContent = a2.current_temperature != null ? "Réel " + fmt(a2.current_temperature) : "—";
+      if ($("tact")) $("tact").textContent = HVAC_ACTION_FR[a2.hvac_action] || HVAC_FR[s2.state] || s2.state;
+    };
+    this._climTick();
     const modes = a.hvac_modes || [];
     if (modes.length) {
       const row = document.createElement("div");
@@ -1584,8 +1635,7 @@ class JmaPopup extends HTMLElement {
     }
     if (a.current_humidity != null) {
       const h = document.createElement("div"); h.className = "row kv";
-      h.innerHTML = `<div class="cell"><div class="k">Température</div><div class="v">${a.current_temperature ?? "—"} °</div></div>` +
-        `<div class="cell"><div class="k">Humidité</div><div class="v">${a.current_humidity} %</div></div>`;
+      h.innerHTML = `<div class="cell"><div class="k">Humidité</div><div class="v">${a.current_humidity} %</div></div>`;
       body.appendChild(h);
     }
     const gh = document.createElement("div"); gh.className = "row"; body.appendChild(gh);
@@ -2906,12 +2956,13 @@ class JmaRoomCard extends HTMLElement {
     const c = this._config;
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .tile.room{flex-direction:column;align-items:stretch;gap:10px;padding:13px;}
+        .tile.room{flex-direction:column;align-items:stretch;gap:9px;padding:12px;}
         .rhead{display:flex;align-items:center;gap:10px;cursor:pointer;}
-        .badge.rbig{width:38px;height:38px;}.badge.rbig ha-icon{--mdc-icon-size:22px;}
+        .meta{flex:0 1 auto;min-width:0;}
+        .badge.rbig{width:36px;height:36px;}.badge.rbig ha-icon{--mdc-icon-size:21px;}
         .tile.alive .badge.rbig{background:var(--jma-grad);}.tile.alive .badge.rbig ha-icon{color:var(--jma-dark);}
-        .name{font-size:.98rem;}
-        .ramb{display:flex;gap:5px;flex-wrap:wrap;}
+        .name{font-size:.96rem;}
+        .ramb{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;}
         .pill2{display:flex;align-items:center;gap:4px;padding:4px 9px;border-radius:10px;background:var(--jma-surf3);font-size:.72rem;font-weight:700;}
         .pill2 ha-icon{--mdc-icon-size:14px;color:var(--jma-icon);}
         .pill2.warn ha-icon{color:#e9871f;}.pill2.cold ha-icon{color:var(--jma-blue);}
@@ -2927,10 +2978,10 @@ class JmaRoomCard extends HTMLElement {
         .c.glow.on>ha-icon{animation:jma-glow 2.6s ease-in-out infinite;}
         @keyframes jma-glow{0%,100%{opacity:.85;}50%{opacity:1;filter:drop-shadow(0 0 6px rgba(255,255,255,.9));}}
       </style>
-      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile room" id="tile"><div class="content" style="gap:10px;">
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile room" id="tile"><div class="content" style="gap:9px;">
         <div class="rhead" id="rhead"><div class="badge rbig"><ha-icon icon="${c.icon}"></ha-icon></div>
-          <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sum"></div></div></div>
-        <div class="ramb" id="amb"></div>
+          <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sum"></div></div>
+          <div class="ramb" id="amb"></div></div>
         <div class="cgrid" id="cgrid"></div>
       </div></div></ha-card>`;
     const grid = this.shadowRoot.getElementById("cgrid");
