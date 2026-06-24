@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.10.2";
+const VERSION = "0.11.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -1428,6 +1428,7 @@ class JmaEvCard extends HTMLElement {
     return { name: "Zoé", battery_entity: "sensor.zoe_batterie", range_entity: "sensor.zoe_autonomie_de_la_batterie",
       plug_entity: "binary_sensor.zoe_prise", charging_entity: "binary_sensor.zoe_en_charge" };
   }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
   _g(key) { const e = this._config[key]; return e && this._hass.states[e]; }
   _num(key) { const s = this._g(key); if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
@@ -1509,6 +1510,7 @@ class JmaBinCard extends HTMLElement {
   }
   getCardSize() { return 1; }
   static getStubConfig() { return { name: "Poubelle", days: [3] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); }
   _build() {
     const c = this._config;
@@ -1580,6 +1582,7 @@ class JmaCameraCard extends HTMLElement {
   setConfig(c) { if (!c.entity) throw new Error("camera : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; }
   getCardSize() { return 2; }
   static getStubConfig() { return { entity: "camera.example" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
   get _s() { return this._hass.states[this._config.entity]; }
   _build() {
@@ -1635,6 +1638,7 @@ class JmaPresenceCard extends HTMLElement {
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; this._persons = c.persons || c.entities || (c.entity ? [c.entity] : []); }
   getCardSize() { return 1; }
   static getStubConfig() { return { persons: ["person.example"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
   _build() {
     const c = this._config;
@@ -1652,23 +1656,25 @@ class JmaPresenceCard extends HTMLElement {
         .p.home .b2{background:#69f0ae;} .p.away .b2{background:#8a8a8e;}
         .b2 ha-icon{--mdc-icon-size:11px;color:#0a0a0b;}
         .pn{font-weight:600;font-size:.8rem;} .ps{font-size:.66rem;opacity:.62;text-align:center;line-height:1.2;}
-        .pbat{display:flex;align-items:center;gap:2px;font-size:.66rem;font-weight:700;opacity:.85;}
-        .pbat ha-icon{--mdc-icon-size:15px;}
-        .pbat.low{color:#ff5252;}
+        .bb{position:absolute;top:-3px;right:-9px;height:18px;padding:0 5px;border-radius:9px;background:rgba(10,10,11,.92);
+          border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;gap:2px;font-size:.6rem;font-weight:800;color:#fff;}
+        .bb ha-icon{--mdc-icon-size:12px;}
+        .bb.low{color:#ff5252;border-color:#ff5252;} .bb.chg{color:#69f0ae;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
         <div class="ppl" id="ppl"></div>
       </div></div></ha-card>`;
   }
-  _derive(s) {
+  _derive(s, i) {
     const src = (s.attributes.source || (s.attributes.device_trackers || [])[0] || "").split(".")[1];
     const ov = (this._config.sensors && this._config.sensors[s.entity_id]) || {};
+    const at = (arr) => (Array.isArray(arr) ? arr[i] : null);
     return {
       entity: s.entity_id,
-      battery_entity: ov.battery || (src ? "sensor." + src + "_battery_level" : null),
-      battery_state_entity: ov.battery_state || (src ? "sensor." + src + "_battery_state" : null),
-      geocode_entity: ov.geocode || (src ? "sensor." + src + "_geocoded_location" : null),
-      distance_entity: ov.distance || (src ? "sensor." + src + "_distance" : null),
+      battery_entity: ov.battery || at(this._config.battery_entities) || (src ? "sensor." + src + "_battery_level" : null),
+      battery_state_entity: ov.battery_state || at(this._config.battery_state_entities) || (src ? "sensor." + src + "_battery_state" : null),
+      geocode_entity: ov.geocode || at(this._config.geocode_entities) || (src ? "sensor." + src + "_geocoded_location" : null),
+      distance_entity: ov.distance || at(this._config.distance_entities) || (src ? "sensor." + src + "_distance" : null),
     };
   }
   _openPopup(cfg) {
@@ -1681,23 +1687,26 @@ class JmaPresenceCard extends HTMLElement {
   }
   _update() {
     const ppl = this.shadowRoot.getElementById("ppl"); ppl.innerHTML = "";
-    this._persons.forEach((eid) => {
+    this._persons.forEach((eid, i) => {
       const s = this._hass.states[eid]; if (!s) return;
       const home = s.state === "home";
       const name = (this._config.names && this._config.names[eid]) || s.attributes.friendly_name || eid.split(".")[1];
       const pic = s.attributes.entity_picture;
       const zone = home ? "Présent" : (s.state === "not_home" ? "Absent" : s.state);
       const dur = jmaSince(s.last_changed);
-      const der = this._derive(s);
+      const der = this._derive(s, i);
       const batS = der.battery_entity && this._hass.states[der.battery_entity];
       const bat = batS && !isNaN(parseFloat(batS.state)) ? Math.round(parseFloat(batS.state)) : null;
       const chgS = der.battery_state_entity && this._hass.states[der.battery_state_entity];
       const charging = chgS && /charg/i.test(chgS.state) && !/not/i.test(chgS.state);
+      const batBadge = bat != null
+        ? `<span class="bb${charging ? " chg" : bat <= 20 ? " low" : ""}"><ha-icon icon="${jmaBatIcon(bat, charging)}"></ha-icon>${bat}</span>`
+        : "";
       const el = document.createElement("div"); el.className = "p " + (home ? "home" : "away");
       el.innerHTML = `<div class="av" style="${pic ? `background-image:url('${pic}')` : ""}">${pic ? "" : name.slice(0, 1).toUpperCase()}` +
+        batBadge +
         `<span class="b2"><ha-icon icon="${home ? "mdi:check" : "mdi:home-export-outline"}"></ha-icon></span></div>` +
-        `<div class="pn">${name}</div><div class="ps">${zone} · ${dur}</div>` +
-        (bat != null ? `<div class="pbat${bat <= 20 ? " low" : ""}"><ha-icon icon="${jmaBatIcon(bat, charging)}"></ha-icon>${bat}%</div>` : "");
+        `<div class="pn">${name}</div><div class="ps">${zone} · ${dur}</div>`;
       el.addEventListener("click", () => this._openPopup({ ...der, name }));
       ppl.appendChild(el);
     });
@@ -1713,6 +1722,7 @@ class JmaAgendaCard extends HTMLElement {
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, days: 7, max: 6, title: "Agenda", ...c }; this._cals = c.entities || (c.entity ? [c.entity] : []); }
   getCardSize() { return 2; }
   static getStubConfig() { return { title: "Agenda", days: 7, max: 6, entities: ["calendar.example"] }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { const first = !this._hass; this._hass = h; if (!this._built) { this._build(); this._built = true; } if (first || this._stale()) this._fetch(); if (this._popup) this._popup.hass = h; }
   _stale() { return !this._last || Date.now() - this._last > 180000; }
   _openPopup() {
@@ -1793,6 +1803,7 @@ class JmaEnergyCard extends HTMLElement {
   }
   getCardSize() { return 2; }
   static getStubConfig() { return { title: "Énergie", production_entity: "sensor.solar_power", grid_entity: "sensor.grid_power" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
   _num(key) { const e = this._config[key]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
   _build() {
@@ -1852,41 +1863,68 @@ customElements.define("jma-energy-card", JmaEnergyCard);
 //  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
 // =============================================================================
 const ED_LABELS = {
-  entity: "Entité", name: "Nom", icon: "Icône", color: "Couleur d'accent",
-  accent: "Couleur secondaire", tap_action: "Clic simple", slider: "Type de slider",
-  battery_entity: "Capteur batterie", area_entity: "Capteur pièce en cours",
-  status_entity: "Capteur d'état", code: "Code (optionnel)", title: "Titre",
+  entity: "Entité", name: "Nom", icon: "Icône", color: "Couleur d'accent", accent: "Couleur secondaire",
+  tap_action: "Clic simple", slider: "Type de slider", code: "Code (optionnel)", title: "Titre",
+  battery_entity: "Capteur batterie", area_entity: "Capteur pièce", status_entity: "Capteur d'état",
+  range_entity: "Autonomie (km)", plug_entity: "Capteur prise branchée", charging_entity: "Capteur en charge",
+  remaining_entity: "Temps de charge restant", battery_temp_entity: "Temp. batterie", ext_temp_entity: "Temp. extérieure",
+  mileage_entity: "Kilométrage", tire_fl: "Pneu avant gauche", tire_fr: "Pneu avant droit",
+  tire_rl: "Pneu arrière gauche", tire_rr: "Pneu arrière droit",
+  charge_start: "Bouton démarrer charge", charge_stop: "Bouton arrêter charge", climate_button: "Bouton climatisation",
+  production_entity: "Production solaire (W)", grid_entity: "Réseau EDF (W)", consumption_entity: "Consommation maison (W)",
+  grid_color: "Couleur EDF", occupancy_entity: "Capteur présence", person_count_entity: "Comptage personnes",
+  persons: "Personnes", battery_entities: "Capteurs batterie (ordre des personnes)",
+  geocode_entities: "Capteurs adresse (ordre des personnes)", distance_entities: "Capteurs distance (ordre des personnes)",
+  entities: "Calendriers", days: "Jours", max: "Nb max d'événements", time: "Heure de sortie",
 };
 function jmaEditorSchema(type) {
   const t = type || "custom:jma-card";
+  const ent = (name, domain, multiple, req) => ({ name, ...(req ? { required: true } : {}),
+    selector: { entity: { ...(domain ? { domain } : {}), ...(multiple ? { multiple: true } : {}) } } });
+  const txt = (name) => ({ name, selector: { text: {} } });
+  const num = (name, min, max) => ({ name, selector: { number: { mode: "box", min: min ?? 0, max: max ?? 99, step: 1 } } });
+  const sel = (name, opts) => ({ name, selector: { select: { mode: "dropdown", options: opts.map((o) => typeof o === "string" ? { value: o, label: o } : o) } } });
+  const tail = [txt("color"), txt("accent"), sel("tap_action", [
+    { value: "popup", label: "Pop-up JMA" }, { value: "more-info", label: "Fiche HA" }, { value: "none", label: "Aucun" }])];
+
+  if (t === "custom:jma-ev-card") return [
+    txt("name"), ent("battery_entity", "sensor"), ent("range_entity", "sensor"),
+    ent("plug_entity", "binary_sensor"), ent("charging_entity", "binary_sensor"), ent("remaining_entity", "sensor"),
+    ent("battery_temp_entity", "sensor"), ent("ext_temp_entity", "sensor"), ent("mileage_entity", "sensor"),
+    ent("tire_fl", "sensor"), ent("tire_fr", "sensor"), ent("tire_rl", "sensor"), ent("tire_rr", "sensor"),
+    ent("charge_start", "button"), ent("charge_stop", "button"), ent("climate_button", "button"),
+    txt("color"), txt("accent")];
+  if (t === "custom:jma-energy-card") return [
+    txt("title"), ent("production_entity", "sensor"), ent("grid_entity", "sensor"), ent("consumption_entity", "sensor"),
+    txt("grid_color"), txt("color"), txt("accent")];
+  if (t === "custom:jma-camera-card") return [
+    ent("entity", "camera", false, true), txt("name"), { name: "icon", selector: { icon: {} } },
+    ent("occupancy_entity", "binary_sensor"), ent("person_count_entity", "sensor"), txt("color"), txt("accent")];
+  if (t === "custom:jma-presence-card") return [
+    ent("persons", ["person", "device_tracker"], true, true),
+    ent("battery_entities", "sensor", true), ent("geocode_entities", "sensor", true), ent("distance_entities", "sensor", true),
+    txt("color"), txt("accent")];
+  if (t === "custom:jma-agenda-card") return [
+    txt("title"), ent("entities", "calendar", true, true), num("days", 1, 31), num("max", 1, 50), txt("color"), txt("accent")];
+  if (t === "custom:jma-bin-card") return [
+    txt("name"), { name: "icon", selector: { icon: {} } }, txt("time"),
+    { name: "days", selector: { select: { multiple: true, options: [
+      { value: 1, label: "Lundi" }, { value: 2, label: "Mardi" }, { value: 3, label: "Mercredi" }, { value: 4, label: "Jeudi" },
+      { value: 5, label: "Vendredi" }, { value: 6, label: "Samedi" }, { value: 0, label: "Dimanche" }] } } },
+    txt("color"), txt("accent")];
+  if (t === "custom:jma-notify-card") return [txt("title"), txt("color")];
+
+  // cartes "entité unique" (light/switch/cover/thermostat/media/scene/alarm/vacuum/jma-card)
   const dom = {
-    "custom:jma-light-card": "light",
-    "custom:jma-switch-card": ["switch", "input_boolean", "fan"],
-    "custom:jma-cover-card": "cover",
-    "custom:jma-thermostat-card": "climate",
-    "custom:jma-media-card": "media_player",
-    "custom:jma-vacuum-card": "vacuum",
-    "custom:jma-scene-card": ["scene", "script"],
-    "custom:jma-alarm-card": "alarm_control_panel",
+    "custom:jma-light-card": "light", "custom:jma-switch-card": ["switch", "input_boolean", "fan"],
+    "custom:jma-cover-card": "cover", "custom:jma-thermostat-card": "climate", "custom:jma-media-card": "media_player",
+    "custom:jma-vacuum-card": "vacuum", "custom:jma-scene-card": ["scene", "script"], "custom:jma-alarm-card": "alarm_control_panel",
   }[t];
-  const schema = [
-    { name: "entity", required: true, selector: { entity: dom ? { domain: dom } : {} } },
-    { name: "name", selector: { text: {} } },
-    { name: "icon", selector: { icon: {} } },
-  ];
-  if (t === "custom:jma-card")
-    schema.push({ name: "slider", selector: { select: { mode: "dropdown", options:
-      ["auto", "brightness", "temperature", "volume", "position", "none"].map((v) => ({ value: v, label: v })) } } });
-  if (t === "custom:jma-vacuum-card") {
-    schema.push({ name: "battery_entity", selector: { entity: { domain: "sensor" } } });
-    schema.push({ name: "area_entity", selector: { entity: { domain: "sensor" } } });
-  }
-  if (t === "custom:jma-alarm-card") schema.push({ name: "code", selector: { text: {} } });
-  schema.push({ name: "color", selector: { text: {} } });
-  schema.push({ name: "accent", selector: { text: {} } });
-  schema.push({ name: "tap_action", selector: { select: { mode: "dropdown", options: [
-    { value: "popup", label: "Pop-up JMA" }, { value: "more-info", label: "Fiche HA" }, { value: "none", label: "Aucun" }] } } });
-  return schema;
+  const schema = [ent("entity", dom, false, true), txt("name"), { name: "icon", selector: { icon: {} } }];
+  if (t === "custom:jma-card") schema.push(sel("slider", ["auto", "brightness", "temperature", "volume", "position", "none"]));
+  if (t === "custom:jma-vacuum-card") { schema.push(ent("battery_entity", "sensor"), ent("area_entity", "sensor"), ent("status_entity", "sensor")); }
+  if (t === "custom:jma-alarm-card") schema.push(txt("code"));
+  return schema.concat(tail);
 }
 class JmaCardEditor extends HTMLElement {
   setConfig(config) { this._config = config; this._render(); }
@@ -2005,6 +2043,7 @@ class JmaNotifyCard extends HTMLElement {
   setConfig(c) { this._config = c || {}; }
   getCardSize() { return 1; }
   static getStubConfig() { return { title: "Notifications" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) this._build(); if (!this._subbed) this._subscribe(); }
   _build() {
     this.shadowRoot.innerHTML =
