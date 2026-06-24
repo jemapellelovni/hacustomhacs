@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.8.0";
+const VERSION = "0.9.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -971,10 +971,11 @@ class JmaPopup extends HTMLElement {
     this._refresh();
   }
   _refresh() {
-    if (this._kind() === "ev") {
-      this.shadowRoot.getElementById("ht").textContent = this._config.name || "Voiture";
-      this.shadowRoot.getElementById("hs").textContent = this._evState();
-      this.shadowRoot.getElementById("hi").setAttribute("icon", "mdi:car-electric");
+    if (this._kind() === "ev" || this._kind() === "energy") {
+      const ev = this._kind() === "ev";
+      this.shadowRoot.getElementById("ht").textContent = ev ? (this._config.name || "Voiture") : (this._config.title || "Énergie");
+      this.shadowRoot.getElementById("hs").textContent = ev ? this._evState() : "Conso & production";
+      this.shadowRoot.getElementById("hi").setAttribute("icon", ev ? "mdi:car-electric" : "mdi:flash");
       (this._graphs || []).forEach((g) => (g.hass = this._hass));
       return;
     }
@@ -1011,6 +1012,7 @@ class JmaPopup extends HTMLElement {
     const body = this.shadowRoot.getElementById("body");
     body.innerHTML = ""; this._graphs = [];
     if (this._kind() === "ev") return this._evBody(body);
+    if (this._kind() === "energy") return this._energyBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -1205,6 +1207,20 @@ class JmaPopup extends HTMLElement {
     if (row.childElementCount) body.appendChild(row);
     const gh = document.createElement("div"); gh.className = "row"; body.appendChild(gh);
     this._graph(gh, [this._config.battery_entity, this._config.range_entity], 48);
+  }
+  _energyBody(body) {
+    const num = (k) => { const e = this._config[k]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; };
+    const prod = Math.max(0, num("production_entity") || 0);
+    const grid = Math.max(0, num("grid_entity") || 0);
+    let cons = num("consumption_entity"); if (cons == null) cons = grid + prod; cons = Math.max(cons, 1);
+    const auto = Math.round((Math.max(0, cons - grid) / cons) * 100);
+    const cells = [["Consommation", Math.round(cons) + " W"], ["Solaire", Math.round(prod) + " W"],
+      ["Réseau EDF", Math.round(grid) + " W"], ["Autoconso.", auto + " %"]];
+    const kv = document.createElement("div"); kv.className = "row kv";
+    kv.innerHTML = cells.map(([k, v]) => `<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    body.appendChild(kv);
+    const gh = document.createElement("div"); gh.className = "row"; body.appendChild(gh);
+    this._graph(gh, [this._config.production_entity, this._config.grid_entity, this._config.consumption_entity], 12);
   }
   _cameraBody(body) {
     const s = this._s;
@@ -1598,6 +1614,72 @@ class JmaAgendaCard extends HTMLElement {
 customElements.define("jma-agenda-card", JmaAgendaCard);
 
 // =============================================================================
+//  ⚡ ÉNERGIE — conso & production (bleu EDF / rose solaire dominant)
+// =============================================================================
+class JmaEnergyCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) {
+    if (!c.production_entity && !c.grid_entity) throw new Error("énergie : production_entity et/ou grid_entity requis");
+    this._config = { color: ROSE, accent: BEIGE, dark: DARK, grid_color: "#3b9bff", title: "Énergie", ...c };
+  }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { title: "Énergie", production_entity: "sensor.solar_power", grid_entity: "sensor.grid_power" }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); if (this._popup) this._popup.hass = h; }
+  _num(key) { const e = this._config[key]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML =
+      `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};--edf:${c.grid_color};}
+        .big{font-weight:800;font-size:1.15rem;letter-spacing:-.5px;flex:none;}
+        .ebar{display:flex;height:14px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,.12);}
+        .ebar .s{background:var(--jma-rose);transition:width .4s;} .ebar .g{background:var(--edf);transition:width .4s;}
+        .leg{display:flex;justify-content:space-between;font-size:.72rem;opacity:.9;}
+        .leg b{font-weight:800;}
+        .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
+        <div class="top"><div class="badge"><ha-icon id="ic" icon="mdi:flash"></ha-icon></div>
+          <div class="meta"><div class="name">${c.title}</div><div class="sub" id="sub"></div></div>
+          <div class="big" id="pc">—</div></div>
+        <div class="ebar"><div class="s" id="bs"></div><div class="g" id="bg"></div></div>
+        <div class="leg">
+          <span><span class="dot" style="background:var(--jma-rose)"></span>Solaire <b id="sol">—</b></span>
+          <span><span class="dot" style="background:var(--edf)"></span>EDF <b id="grd">—</b></span>
+        </div>
+      </div></div></ha-card>`;
+    this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
+  }
+  _openPopup() {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { ...this._config, kind: "energy", entity: this._config.production_entity || this._config.grid_entity };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
+  _update() {
+    const prod = Math.max(0, this._num("production_entity") || 0);
+    const grid = Math.max(0, this._num("grid_entity") || 0);
+    let cons = this._num("consumption_entity"); if (cons == null) cons = grid + prod; cons = Math.max(cons, 1);
+    const solarUsed = Math.max(0, cons - grid);
+    const solarDom = solarUsed >= grid;
+    const accent = solarDom ? this._config.color : this._config.grid_color;
+    const sShare = Math.round((solarUsed / cons) * 100);
+    this.shadowRoot.getElementById("bs").style.width = sShare + "%";
+    this.shadowRoot.getElementById("bg").style.width = (100 - sShare) + "%";
+    this.shadowRoot.getElementById("pc").textContent = Math.round(cons) + " W";
+    this.shadowRoot.getElementById("sol").textContent = Math.round(prod) + " W";
+    this.shadowRoot.getElementById("grd").textContent = Math.round(grid) + " W";
+    this.shadowRoot.getElementById("sub").textContent = (solarDom ? "Solaire dominant" : "Réseau EDF dominant") + " · " + sShare + "% autoconso.";
+    const ic = this.shadowRoot.getElementById("ic");
+    ic.setAttribute("icon", solarDom ? "mdi:solar-power" : "mdi:transmission-tower");
+    ic.style.color = accent;
+    this.shadowRoot.querySelector(".badge").style.background = accent + "33";
+  }
+}
+customElements.define("jma-energy-card", JmaEnergyCard);
+
+// =============================================================================
 //  ÉDITEUR VISUEL (clic sur la carte en mode édition du dashboard)
 // =============================================================================
 const ED_LABELS = {
@@ -1848,6 +1930,7 @@ REG("jma-bin-card", "JMA Poubelle", "Rappel sortie poubelle par jour de la semai
 REG("jma-camera-card", "JMA Caméra", "Flux caméra + présence/REC, pop-up agrandi.");
 REG("jma-presence-card", "JMA Présence", "Avatars présents/absents (personnes).");
 REG("jma-agenda-card", "JMA Agenda", "Événements calendrier, nb de jours configurable.");
+REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solaire dominant.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
