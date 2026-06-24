@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.18.0";
+const VERSION = "0.19.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -752,6 +752,96 @@ customElements.define("jma-light-card", JmaLightCard);
 customElements.define("jma-switch-card", JmaSwitchCard);
 customElements.define("jma-cover-card", JmaCoverCard);
 customElements.define("jma-thermostat-card", JmaThermostatCard);
+
+// =============================================================================
+//  🎯 THERMOSTAT CADRAN (façon Nest) — anneau circulaire, glisser pour régler
+// =============================================================================
+class JmaClimateDialCard extends JmaBase {
+  static getStubConfig() { return { entity: "climate.example" }; }
+  _pt(deg) { const r = (deg) * Math.PI / 180; return { x: 100 + 82 * Math.cos(r), y: 100 + 82 * Math.sin(r) }; }
+  _arc(fa, fb) {
+    const a0 = 135 + fa * 270, a1 = 135 + fb * 270;
+    const p0 = this._pt(a0), p1 = this._pt(a1);
+    return `M ${p0.x.toFixed(1)} ${p0.y.toFixed(1)} A 82 82 0 ${(a1 - a0) > 180 ? 1 : 0} 1 ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+  }
+  _build() {
+    const extra = `.dial{position:relative;width:100%;max-width:230px;margin:0 auto;aspect-ratio:1;}
+      .dial svg{width:100%;height:100%;display:block;touch-action:none;cursor:pointer;}
+      .track{fill:none;stroke:var(--jma-track);stroke-width:13;stroke-linecap:round;}
+      .fillarc{fill:none;stroke-width:13;stroke-linecap:round;transition:stroke .3s;}
+      .knob{fill:#fff;stroke:rgba(0,0,0,.25);stroke-width:1;}
+      .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}
+      .dset{font-weight:800;font-size:2.4rem;letter-spacing:-2px;line-height:1;}
+      .dcur{font-size:.72rem;opacity:.6;margin-top:4px;} .dmode{font-size:.7rem;opacity:.8;margin-top:2px;font-weight:700;}`;
+    this.shadowRoot.innerHTML = this._styleBlock(extra) + CARD_WRAP_OPEN +
+      `<div class="tile flat"><div class="content">
+         <div class="top"><div class="badge"><ha-icon class="ic" icon="mdi:thermostat"></ha-icon></div>
+           <div class="meta"><div class="name"></div><div class="sub"></div></div></div>
+         <div class="dial" id="dial">
+           <svg viewBox="0 0 200 200">
+             <path class="track" d="${this._arc(0, 1)}"></path>
+             <path class="fillarc" id="fill" d=""></path>
+             <circle class="knob" id="knob" cx="100" cy="18" r="7"></circle>
+           </svg>
+           <div class="center"><div class="dset" id="set">—</div><div class="dcur" id="cur"></div><div class="dmode" id="dm"></div></div>
+         </div>
+         <div class="chips" id="modes"></div>
+       </div></div></ha-card>`;
+    const dial = this.shadowRoot.getElementById("dial");
+    const onMove = (e) => {
+      const a = this._s && this._s.attributes; if (!a) return;
+      const r = dial.getBoundingClientRect();
+      let ang = Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+      if (ang < 0) ang += 360;
+      let rel = ang - 135; if (rel < 0) rel += 360;
+      let frac = rel / 270; if (frac > 1) frac = (rel - 270) < (360 - rel) ? 1 : 0;
+      frac = Math.max(0, Math.min(1, frac));
+      const min = a.min_temp ?? 7, max = a.max_temp ?? 35, step = a.target_temp_step || 0.5;
+      this._pending = Math.round((min + frac * (max - min)) / step) * step;
+      this._paint(this._pending, a);
+    };
+    let dragging = false;
+    dial.addEventListener("pointerdown", (e) => { dragging = true; try { dial.setPointerCapture(e.pointerId); } catch (_) {} onMove(e); });
+    dial.addEventListener("pointermove", (e) => { if (dragging) onMove(e); });
+    const end = () => { if (!dragging) return; dragging = false; if (this._pending != null) { this._call("climate", "set_temperature", { entity_id: this._config.entity, temperature: this._pending }); this._pending = null; } };
+    dial.addEventListener("pointerup", end);
+    dial.addEventListener("pointercancel", end);
+    this._wireHold(this.shadowRoot.querySelector(".badge"), null);
+  }
+  _color(s) { return s.state === "heat" ? "#ff7043" : s.state === "cool" ? "#40c4ff" : s.state === "dry" ? "#ffca28" : s.state === "off" ? "var(--jma-track)" : this._config.color; }
+  _paint(temp, a) {
+    const min = a.min_temp ?? 7, max = a.max_temp ?? 35;
+    const frac = Math.max(0, Math.min(1, (temp - min) / (max - min)));
+    this.shadowRoot.getElementById("fill").setAttribute("d", this._arc(0, Math.max(0.001, frac)));
+    const k = this._pt(135 + frac * 270);
+    const knob = this.shadowRoot.getElementById("knob"); knob.setAttribute("cx", k.x.toFixed(1)); knob.setAttribute("cy", k.y.toFixed(1));
+    this.shadowRoot.getElementById("set").textContent = temp + "°";
+  }
+  _update() {
+    const s = this._s; if (!s) return this._unavail();
+    const a = s.attributes;
+    const on = s.state !== "off" && s.state !== "unavailable";
+    this.shadowRoot.querySelector(".ic").setAttribute("icon", this._icon(s, "mdi:thermostat"));
+    this.shadowRoot.querySelector(".name").textContent = this._name(s);
+    this.shadowRoot.querySelector(".sub").textContent = a.hvac_action ? (HVAC_ACTION_FR[a.hvac_action] || a.hvac_action) : (HVAC_FR[s.state] || s.state);
+    this.shadowRoot.getElementById("fill").style.stroke = this._color(s);
+    if (a.temperature != null && this._pending == null) this._paint(a.temperature, a);
+    this.shadowRoot.getElementById("cur").textContent = a.current_temperature != null ? "Actuel " + a.current_temperature + "°" : "";
+    this.shadowRoot.getElementById("dm").textContent = HVAC_FR[s.state] || s.state;
+    this._dim(this.shadowRoot.querySelector(".tile"), s);
+    const wrap = this.shadowRoot.getElementById("modes");
+    if (wrap.childElementCount !== (a.hvac_modes || []).length) {
+      wrap.innerHTML = "";
+      (a.hvac_modes || []).forEach((m) => {
+        const b = document.createElement("button"); b.className = "chip"; b.dataset.m = m; b.textContent = HVAC_FR[m] || m;
+        b.addEventListener("click", () => this._call("climate", "set_hvac_mode", { entity_id: this._config.entity, hvac_mode: m }));
+        wrap.appendChild(b);
+      });
+    }
+    wrap.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.dataset.m === s.state));
+  }
+}
+customElements.define("jma-climate-dial-card", JmaClimateDialCard);
 customElements.define("jma-media-card", JmaMediaCard);
 customElements.define("jma-vacuum-card", JmaVacuumCard);
 customElements.define("jma-scene-card", JmaSceneCard);
@@ -1537,6 +1627,19 @@ class JmaPopup extends HTMLElement {
       <button class="tbtn" data-s="media_next_track"><ha-icon icon="mdi:skip-next"></ha-icon></button>`;
     row.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => this._call("media_player", b.dataset.s, { entity_id: this._config.entity })));
     body.appendChild(row);
+    const sources = s.attributes.source_list || [];
+    if (sources.length) {
+      const sr = document.createElement("div"); sr.className = "row";
+      sr.innerHTML = `<div class="lbl"><span>Source</span></div><div class="chiprow"></div>`;
+      const wrap = sr.querySelector(".chiprow");
+      sources.slice(0, 12).forEach((src) => {
+        const b = document.createElement("button");
+        b.className = "pchip" + (s.attributes.source === src ? " on" : ""); b.textContent = src;
+        b.addEventListener("click", () => this._call("media_player", "select_source", { entity_id: this._config.entity, source: src }));
+        wrap.appendChild(b);
+      });
+      body.appendChild(sr);
+    }
   }
   _coverBody(body) {
     const s = this._s, a = s.attributes, feat = a.supported_features || 0;
@@ -2553,7 +2656,7 @@ function jmaEditorSchema(type) {
   // cartes "entité unique" (light/switch/cover/thermostat/media/scene/alarm/vacuum/jma-card)
   const dom = {
     "custom:jma-light-card": "light", "custom:jma-switch-card": ["switch", "input_boolean", "fan"],
-    "custom:jma-cover-card": "cover", "custom:jma-thermostat-card": "climate", "custom:jma-media-card": "media_player",
+    "custom:jma-cover-card": "cover", "custom:jma-thermostat-card": "climate", "custom:jma-climate-dial-card": "climate", "custom:jma-media-card": "media_player",
     "custom:jma-vacuum-card": "vacuum", "custom:jma-scene-card": ["scene", "script"], "custom:jma-alarm-card": "alarm_control_panel",
   }[t];
   const schema = [ent("entity", dom, false, true), txt("name"), { name: "icon", selector: { icon: {} } }];
@@ -2764,6 +2867,7 @@ REG("jma-light-card", "JMA Lumière", "Lumière : slider de luminosité, tap = o
 REG("jma-switch-card", "JMA Interrupteur", "Interrupteur : pastille on/off iOS.");
 REG("jma-cover-card", "JMA Volet", "Volet : Ouvrir / Stop / Fermer + position.");
 REG("jma-thermostat-card", "JMA Thermostat", "Climat : consigne ± + modes.");
+REG("jma-climate-dial-card", "JMA Thermostat cadran", "Climat : cadran rond, glisser pour régler.");
 REG("jma-media-card", "JMA Média", "Lecteur média : transport + volume.");
 REG("jma-vacuum-card", "JMA Aspirateur", "Aspirateur : Start / Pause / Dock.");
 REG("jma-scene-card", "JMA Scène", "Scène / script : bouton d'activation.");
