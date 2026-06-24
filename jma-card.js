@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.40.0";
+const VERSION = "0.41.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3252,7 +3252,7 @@ function jmaEditorSchema(type) {
   if (t === "custom:jma-screensaver-card") return [
     num("timeout", 1, 120), ent("weather_entity", "weather"),
     ent("production_entity", "sensor"), ent("consumption_entity", "sensor"), ent("grid_entity", "sensor"), num("graph_hours", 1, 48),
-    ent("agenda_entities", "calendar", true), num("days", 1, 31),
+    ent("agenda_entities", "calendar", true), num("days", 1, 31), ent("saint_entity", "sensor"),
     { name: "show_date", selector: { boolean: {} } }, txt("color"), txt("accent")];
   if (t === "custom:jma-room-card") return [
     txt("name"), { name: "icon", selector: { icon: {} } },
@@ -3711,6 +3711,7 @@ class JmaScreensaverCard extends HTMLElement {
       .ss-clock{position:absolute;top:3.6vh;left:3.4vw;text-align:left;}
       .ss-time{font-weight:200;font-size:8vw;line-height:.92;letter-spacing:-.3vw;opacity:.88;}
       .ss-date{font-size:1.6vw;opacity:.32;text-transform:capitalize;letter-spacing:.14vw;margin-top:.4vh;}
+      .ss-saint{font-size:1.4vw;color:#f7b6cb;opacity:.6;margin-top:.5vh;font-weight:600;}
       .ss-center{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);width:46vw;display:flex;flex-direction:column;align-items:center;gap:1.8vh;}
       .ss-glegend{display:flex;gap:3vw;font-size:2.4vw;font-weight:700;}
       .ss-gi{display:inline-flex;align-items:center;gap:1vw;opacity:.45;transition:opacity .4s;}
@@ -3755,7 +3756,7 @@ class JmaScreensaverCard extends HTMLElement {
     `;
     const wrap = document.createElement("div"); wrap.className = "ss-wrap";
     wrap.innerHTML =
-      `<div class="ss-clock"><div class="ss-time" id="jct">--:--</div>${this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : ""}</div>` +
+      `<div class="ss-clock"><div class="ss-time" id="jct">--:--</div>${this._config.show_date ? `<div class="ss-date" id="jcd">—</div>` : ""}<div class="ss-saint" id="jcsaint"></div></div>` +
       `<div class="ss-center"><div class="ss-glegend" id="jcgl"></div><div class="ss-ebar"><div class="ss-es" id="jbs"></div><div class="ss-eg" id="jbg"></div></div></div>` +
       `<div class="ss-wx2" id="jcw" style="display:none"><div class="ss-wnow" id="jwnow"></div><div class="wfc" id="jwfc"></div></div>` +
       `<div class="ss-agenda" id="jca"></div>`;
@@ -3849,6 +3850,16 @@ class JmaScreensaverCard extends HTMLElement {
     const d = new Date(), hh = ("0" + d.getHours()).slice(-2), mm = ("0" + d.getMinutes()).slice(-2);
     const ct = this._ovl.querySelector("#jct"); if (ct) ct.textContent = hh + ":" + mm;
     const cd = this._ovl.querySelector("#jcd"); if (cd) cd.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    const cs = this._ovl.querySelector("#jcsaint");
+    if (cs && typeof SAINTS !== "undefined") {
+      let saint; const se = this._config.saint_entity;
+      if (se && this._hass && this._hass.states[se]) saint = this._hass.states[se].state;
+      else { const arr = SAINTS[d.getMonth()]; saint = (arr && arr[d.getDate() - 1]) || ""; }
+      if (saint && !["unknown", "unavailable", ""].includes(saint)) {
+        const special = /^(N\.-D\.|Toussaint|Défunts|Assomption|Annonciation|Présentation|Transfiguration|Nativité|La Sainte|Imm\.|Noël|Conversion|Marie$)/.test(saint);
+        cs.textContent = "✦ " + (special ? saint : "St" + (/^[AÉEIOUYH]/i.test(saint) ? "e " : " ") + saint);
+      } else cs.textContent = "";
+    }
     const cw = this._ovl.querySelector("#jcw"); const nowEl = this._ovl.querySelector("#jwnow");
     const w = this._config.weather_entity && this._hass && this._hass.states[this._config.weather_entity];
     if (cw) {
