@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.43.0";
+const VERSION = "0.44.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1439,6 +1439,15 @@ class JmaPopup extends HTMLElement {
       (this._graphs || []).forEach((g) => (g.hass = this._hass));
       return;
     }
+    if (this._kind() === "covers" || this._kind() === "climates") {
+      const cov = this._kind() === "covers", list = this._config.entities || [];
+      this.shadowRoot.getElementById("ht").textContent = this._config.name || (cov ? "Volets" : "Thermostats");
+      this.shadowRoot.getElementById("hs").textContent = list.length + (cov ? " volet" : " thermostat") + (list.length > 1 ? "s" : "");
+      this.shadowRoot.getElementById("hi").setAttribute("icon", cov ? "mdi:window-shutter" : "mdi:thermostat");
+      if (cov && this._coversTick) this._coversTick();
+      if (!cov && this._climatesTick) this._climatesTick();
+      return;
+    }
     const s = this._s;
     if (!s) return this._close();
     const fn = this._config.name || s.attributes.friendly_name || this._config.entity;
@@ -1473,12 +1482,14 @@ class JmaPopup extends HTMLElement {
   }
   _renderBody() {
     const body = this.shadowRoot.getElementById("body");
-    body.innerHTML = ""; this._graphs = []; this._climTick = null;
+    body.innerHTML = ""; this._graphs = []; this._climTick = null; this._coversTick = null; this._climatesTick = null;
     if (this._kind() === "ev") return this._evBody(body);
     if (this._kind() === "energy") return this._energyBody(body);
     if (this._kind() === "agenda") return this._agendaBody(body);
     if (this._kind() === "sonos") return this._sonosBody(body);
     if (this._kind() === "scenes") return this._scenesBody(body);
+    if (this._kind() === "covers") return this._coversBody(body);
+    if (this._kind() === "climates") return this._climatesBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -2016,6 +2027,68 @@ class JmaPopup extends HTMLElement {
       row.appendChild(b);
     });
     body.appendChild(row);
+  }
+  _coversBody(body) {
+    const list = this._config.entities || [];
+    const m = document.createElement("div"); m.className = "row btns";
+    m.innerHTML = `<button class="btn" id="cvo"><ha-icon icon="mdi:arrow-up" style="--mdc-icon-size:18px;vertical-align:-4px"></ha-icon> Tout ouvrir</button>` +
+      `<button class="btn" id="cvs">Stop</button>` +
+      `<button class="btn" id="cvc"><ha-icon icon="mdi:arrow-down" style="--mdc-icon-size:18px;vertical-align:-4px"></ha-icon> Tout fermer</button>`;
+    m.querySelector("#cvo").addEventListener("click", () => this._call("cover", "open_cover", { entity_id: list }));
+    m.querySelector("#cvs").addEventListener("click", () => this._call("cover", "stop_cover", { entity_id: list }));
+    m.querySelector("#cvc").addEventListener("click", () => this._call("cover", "close_cover", { entity_id: list }));
+    body.appendChild(m);
+    this._covRows = {};
+    list.forEach((eid) => {
+      const s = this._hass.states[eid]; const nm = (this._config.names && this._config.names[eid]) || ((s && s.attributes.friendly_name) || eid);
+      const row = document.createElement("div"); row.className = "row";
+      const supportsPos = s && (s.attributes.current_position != null || ((s.attributes.supported_features || 0) & 4));
+      row.innerHTML = `<div class="lbl"><span>${nm}</span><b class="cvp"></b></div>`;
+      const wrap = document.createElement("div"); wrap.style.cssText = "display:flex;gap:8px;align-items:center;";
+      const bts = document.createElement("div"); bts.className = "btnrow"; bts.style.flex = "none";
+      bts.innerHTML = `<button class="cbtn covb" data-a="open_cover"><ha-icon icon="mdi:arrow-up"></ha-icon></button><button class="cbtn covb" data-a="stop_cover"><ha-icon icon="mdi:stop"></ha-icon></button><button class="cbtn covb" data-a="close_cover"><ha-icon icon="mdi:arrow-down"></ha-icon></button>`;
+      bts.querySelectorAll(".cbtn").forEach((b) => b.addEventListener("click", () => this._call("cover", b.dataset.a, { entity_id: eid })));
+      wrap.appendChild(bts);
+      let sl = null;
+      if (supportsPos) { sl = jmaSlider({ icon: "mdi:window-shutter", fmt: (v) => v + "%", label: nm, onCommit: (v) => this._call("cover", "set_cover_position", { entity_id: eid, position: v }) }); wrap.appendChild(sl); }
+      row.appendChild(wrap); body.appendChild(row);
+      this._covRows[eid] = { row, sl };
+    });
+    this._coversTick = () => {
+      list.forEach((eid) => {
+        const s = this._hass.states[eid], r = this._covRows[eid]; if (!s || !r) return;
+        const p = s.attributes.current_position;
+        r.row.querySelector(".cvp").textContent = p != null ? p + "%" : (s.state === "open" ? "Ouvert" : s.state === "closed" ? "Fermé" : s.state);
+        if (r.sl && p != null) r.sl.setValue(p);
+      });
+    };
+    this._coversTick();
+  }
+  _climatesBody(body) {
+    const list = this._config.entities || [];
+    this._climRows = {};
+    list.forEach((eid) => {
+      const s = this._hass.states[eid]; const nm = (this._config.names && this._config.names[eid]) || ((s && s.attributes.friendly_name) || eid);
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `<div class="lbl"><span>${nm}</span><b class="clst"></b></div>` +
+        `<div class="therm"><button class="step" data-d="-1"><ha-icon icon="mdi:minus"></ha-icon></button><div class="set clset">—</div><button class="step" data-d="1"><ha-icon icon="mdi:plus"></ha-icon></button></div>`;
+      row.querySelectorAll(".step").forEach((b) => b.addEventListener("click", () => {
+        const st = this._hass.states[eid]; if (!st) return; const a = st.attributes; const step = a.target_temp_step || 0.5;
+        const min = a.min_temp ?? 7, max = a.max_temp ?? 35; let t = (a.temperature ?? min) + Number(b.dataset.d) * step;
+        t = Math.max(min, Math.min(max, Math.round(t / step) * step));
+        this._call("climate", "set_temperature", { entity_id: eid, temperature: Math.round(t * 10) / 10 });
+      }));
+      body.appendChild(row); this._climRows[eid] = row;
+    });
+    this._climatesTick = () => {
+      list.forEach((eid) => {
+        const s = this._hass.states[eid], row = this._climRows[eid]; if (!s || !row) return; const a = s.attributes;
+        row.querySelector(".clset").textContent = a.temperature != null ? a.temperature + "°" : "—";
+        const cur = a.current_temperature != null ? "Actuel " + a.current_temperature + "° · " : "";
+        row.querySelector(".clst").textContent = cur + (HVAC_ACTION_FR[a.hvac_action] || HVAC_FR[s.state] || s.state);
+      });
+    };
+    this._climatesTick();
   }
   _energyBody(body) {
     const num = (k) => { const e = this._config[k]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; };
@@ -3254,6 +3327,8 @@ function jmaEditorSchema(type) {
     ent("grid_import_entity", "sensor"), ent("grid_export_entity", "sensor"),
     num("price", 0, 5), num("export_price", 0, 5), txt("grid_color"), txt("color"), txt("accent")];
   if (t === "custom:jma-favorites-card") return [txt("title"), num("columns", 1, 8), txt("color"), txt("accent")];
+  if (t === "custom:jma-covers-card") return [txt("name"), { name: "icon", selector: { icon: {} } }, ent("entities", "cover", true), txt("color"), txt("accent")];
+  if (t === "custom:jma-climates-card") return [txt("name"), { name: "icon", selector: { icon: {} } }, ent("entities", "climate", true), txt("color"), txt("accent")];
   if (t === "custom:jma-security-card") return [
     txt("name"), ent("alarm_entity", "alarm_control_panel"), ent("cameras", "camera", true),
     ent("sensors", "binary_sensor", true), txt("color"), txt("accent")];
@@ -3933,6 +4008,63 @@ class JmaScreensaverCard extends HTMLElement {
 jmaDef("jma-screensaver-card", JmaScreensaverCard);
 
 // =============================================================================
+//  🪟 TOUS LES VOLETS  /  🌡️ TOUS LES THERMOSTATS (tuile + pop-up groupé)
+// =============================================================================
+class JmaGroupCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  getCardSize() { return 1; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  _list() {
+    if (this._config.entities && this._config.entities.length) return this._config.entities;
+    const dom = this._DOMAIN;
+    return Object.keys(this._hass.states).filter((e) => e.startsWith(dom + ".") && !["unavailable", "unknown"].includes(this._hass.states[e].state)).sort();
+  }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .chev{opacity:.4;--mdc-icon-size:22px;flex:none;}</style>` +
+      CARD_WRAP_OPEN + `<div class="tile" id="tile"><div class="content"><div class="top">
+        <div class="badge"><ha-icon icon="${c.icon}"></ha-icon></div>
+        <div class="meta"><div class="name">${c.name}</div><div class="sub" id="sub"></div></div>
+        <ha-icon class="chev" icon="mdi:chevron-right"></ha-icon>
+      </div></div></div></ha-card>`;
+    this.shadowRoot.getElementById("tile").addEventListener("click", () => this._openPopup());
+  }
+  _openPopup() {
+    if (this._popup) return;
+    const p = document.createElement("jma-card-popup");
+    p.config = { kind: this._KIND, entities: this._list(), names: this._config.names, name: this._config.name,
+      color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme };
+    p.hass = this._hass;
+    p.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(p); this._popup = p;
+  }
+}
+class JmaCoversCard extends JmaGroupCard {
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Volets", icon: "mdi:window-shutter", ...c }; this._DOMAIN = "cover"; this._KIND = "covers"; }
+  static getStubConfig() { return { name: "Volets" }; }
+  _update() {
+    const list = this._list(); let open = 0;
+    list.forEach((e) => { const s = this._hass.states[e]; if (s && (s.state === "open" || (s.attributes.current_position || 0) > 0)) open++; });
+    const tile = this.shadowRoot.getElementById("tile"); tile.classList.toggle("on", open > 0);
+    this.shadowRoot.getElementById("sub").textContent = list.length + " volet" + (list.length > 1 ? "s" : "") + " · " + (open ? open + " ouvert" + (open > 1 ? "s" : "") : "tous fermés");
+  }
+}
+jmaDef("jma-covers-card", JmaCoversCard);
+class JmaClimatesCard extends JmaGroupCard {
+  setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Thermostats", icon: "mdi:thermostat", ...c }; this._DOMAIN = "climate"; this._KIND = "climates"; }
+  static getStubConfig() { return { name: "Thermostats" }; }
+  _update() {
+    const list = this._list(); let on = 0;
+    list.forEach((e) => { const s = this._hass.states[e]; if (s && s.state !== "off" && s.state !== "unavailable") on++; });
+    const tile = this.shadowRoot.getElementById("tile"); tile.classList.toggle("on", on > 0);
+    this.shadowRoot.getElementById("sub").textContent = list.length + " thermostat" + (list.length > 1 ? "s" : "") + " · " + (on ? on + " actif" + (on > 1 ? "s" : "") : "tous éteints");
+  }
+}
+jmaDef("jma-climates-card", JmaClimatesCard);
+
+// =============================================================================
 window.customCards = window.customCards || [];
 const REG = (type, name, description) => window.customCards.push({ type, name, description, preview: true });
 REG("jma-card", "JMA Card (auto)", "Carte universelle flat/iOS : slider horizontal + pop-up.");
@@ -3962,6 +4094,8 @@ REG("jma-energy-today-card", "JMA Énergie du jour", "Bilan kWh du jour + coût 
 REG("jma-favorites-card", "JMA Favoris", "Grille de raccourcis (scènes, services, navigation).");
 REG("jma-security-card", "JMA Sécurité", "Alarme + caméras + ouvertures, vue d'ensemble.");
 REG("jma-screensaver-card", "JMA Mode veille", "Économiseur d'écran horloge pour tablette.");
+REG("jma-covers-card", "JMA Tous les volets", "Tuile + pop-up de tous les volets.");
+REG("jma-climates-card", "JMA Tous les thermostats", "Tuile + pop-up de tous les thermostats.");
 
 console.info(
   `%c JMA-CARDS %c v${VERSION} `,
