@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.19.0";
+const VERSION = "0.20.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -723,7 +723,10 @@ class JmaAlarmCard extends JmaBase {
         const b = document.createElement("button");
         b.className = "cbtn"; b.dataset.s = state; b.title = label;
         b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>`;
-        b.addEventListener("click", () => {
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const s = this._s;
+          if (s && s.attributes.code_format != null && this._config.code == null) { this._openPopup(); return; }
           const data = { entity_id: this._config.entity };
           if (this._config.code != null) data.code = String(this._config.code);
           this._call("alarm_control_panel", svc, data);
@@ -1149,6 +1152,11 @@ class JmaPopup extends HTMLElement {
         .kv .k{font-size:.7rem;opacity:.6;} .kv .v{font-weight:700;font-size:.95rem;margin-top:2px;}
         .bignum{font-weight:800;font-size:2rem;letter-spacing:-1px;}
         .statebig{font-weight:800;font-size:1.3rem;margin:2px 0;}
+        .codedisp{text-align:center;font-size:1.5rem;font-weight:800;letter-spacing:8px;padding:4px 0 8px;min-height:1.6rem;}
+        .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+        .kpk{height:52px;border:none;border-radius:14px;background:rgba(255,255,255,.08);color:#fff;font-size:1.3rem;
+          font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,background .2s;}
+        .kpk:active{transform:scale(.93);background:rgba(248,165,194,.22);} .kpk ha-icon{--mdc-icon-size:24px;}
         .chiprow{display:flex;gap:6px;flex-wrap:wrap;}
         .pchip{padding:7px 11px;border-radius:11px;background:rgba(255,255,255,.1);border:none;color:#fff;cursor:pointer;font-size:.8rem;text-transform:capitalize;}
         .pchip.on{background:var(--jma-rose);color:var(--jma-dark);font-weight:700;}
@@ -1434,16 +1442,42 @@ class JmaPopup extends HTMLElement {
     modes.forEach(([svc, label, st]) => {
       const b = document.createElement("button");
       b.className = "btn" + (s.state === st ? " on" : ""); b.textContent = label;
-      b.addEventListener("click", () => {
-        const data = { entity_id: this._config.entity };
-        if (this._config.code != null) data.code = String(this._config.code);
-        this._call("alarm_control_panel", svc, data);
-      });
+      b.addEventListener("click", () => this._alarmAction(svc));
       row.appendChild(b);
     });
     body.appendChild(row);
+    // pavé numérique si le panneau attend un code
+    if (s.attributes.code_format != null && this._config.code == null) {
+      this._code = "";
+      const disp = document.createElement("div"); disp.className = "row";
+      disp.innerHTML = `<div class="codedisp" id="cd">----</div>`; body.appendChild(disp);
+      const kp = document.createElement("div"); kp.className = "row kp";
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "del"].forEach((k) => {
+        const b = document.createElement("button"); b.className = "kpk";
+        b.innerHTML = k === "del" ? `<ha-icon icon="mdi:backspace-outline"></ha-icon>` : k === "clear" ? `<ha-icon icon="mdi:close"></ha-icon>` : k;
+        b.addEventListener("click", () => this._kp(k));
+        kp.appendChild(b);
+      });
+      body.appendChild(kp);
+    }
     const gh = document.createElement("div"); gh.className = "row"; body.appendChild(gh);
     this._graph(gh, [this._config.entity], 48);
+  }
+  _kp(k) {
+    if (k === "clear") this._code = "";
+    else if (k === "del") this._code = (this._code || "").slice(0, -1);
+    else this._code = ((this._code || "") + k).slice(0, 10);
+    const cd = this.shadowRoot.getElementById("cd");
+    if (cd) cd.textContent = this._code.length ? "•".repeat(this._code.length) : "----";
+  }
+  _alarmAction(svc) {
+    const a = this._s.attributes;
+    const data = { entity_id: this._config.entity };
+    const code = this._config.code != null ? String(this._config.code) : (this._code || "");
+    if (a.code_format != null && code === "") { jmaToast({ title: "Code requis", message: "Saisis le code d'abord", level: "warning" }); return; }
+    if (code) data.code = code;
+    this._call("alarm_control_panel", svc, data);
+    this._code = ""; const cd = this.shadowRoot.getElementById("cd"); if (cd) cd.textContent = "----";
   }
   _vacuumBody(body) {
     const s = this._s, a = s.attributes;
