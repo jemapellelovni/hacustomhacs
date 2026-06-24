@@ -1,14 +1,14 @@
 # 🎚️ JMA Card
 
-Card Lovelace **universelle**, design **flat / iOS**, avec un **slider plein-tuile à glisser**
-(comme l'app Maison iOS) — luminosité, température, volume, position de volet.
+Card Lovelace **universelle**, design **flat / iOS**, avec un **slider horizontal**
+(barre à glisser distincte, façon app Maison iOS) — luminosité, température, volume, position de volet.
 
 Vanilla JS, **zéro build, zéro dépendance**, un seul fichier.
 
 > Palette par défaut : rose `#f8a5c2` · beige `#DEC198` · fond `#0a0a0b` · texte blanc.
 
 ## ✨ Fonctions
-- **Slider plein-tuile** : glisse verticalement sur la carte pour régler la valeur.
+- **Slider horizontal** : une barre dédiée en bas de la carte, glisse de gauche à droite pour régler la valeur (le reste de la carte reste cliquable pour le toggle).
 - **Pop-up de contrôle custom** (long-press) : bottom-sheet iOS avec grands sliders,
   nuancier de couleurs (lumières), modes (clim), transport (média), boutons volet.
 - **Tap** : toggle (lumière/switch), play/pause (média), ouvre/ferme (volet), active (scène/script).

@@ -1,4 +1,4 @@
-/*! JMA Card — flat/iOS universal Lovelace card with full-tile drag slider
+/*! JMA Card — flat/iOS universal Lovelace card with a horizontal slider
  *  + pop-up de contrôle custom (long-press).
  *  Palette: rose #f8a5c2 · beige #DEC198 · dark #0a0a0b · texte #fff
  *  Vanilla JS, zéro build, zéro dépendance.
@@ -10,7 +10,7 @@
  *  hold_action: popup|more-info|none   (def: popup)
  */
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const DARK = "#0a0a0b";
@@ -23,6 +23,7 @@ class JmaCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._dragging = false;
+    this._onSlider = false;
     this._built = false;
   }
 
@@ -115,31 +116,40 @@ class JmaCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         :host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .tile{position:relative;overflow:hidden;border-radius:22px;min-height:104px;height:100%;
+        .tile{position:relative;overflow:hidden;border-radius:22px;min-height:118px;height:100%;
           padding:14px;box-sizing:border-box;background:rgba(255,255,255,.06);
           backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);
-          color:#fff;cursor:pointer;user-select:none;display:flex;flex-direction:column;
-          justify-content:space-between;touch-action:pan-y;
+          color:#fff;cursor:pointer;user-select:none;display:flex;touch-action:pan-y;
           transition:transform .22s cubic-bezier(.2,.7,.3,1),background .3s ease;}
         .tile:hover{transform:scale(1.02);}
-        .tile.active{transform:scale(.97);}
-        .fill{position:absolute;left:0;right:0;bottom:0;height:0%;
-          background:linear-gradient(0deg,var(--jma-rose) 0%,var(--jma-beige) 140%);
-          opacity:.92;z-index:0;transition:height .28s cubic-bezier(.2,.7,.3,1);pointer-events:none;}
-        .tile.dragging .fill{transition:none;}
+        .tile.active{transform:scale(.985);}
         .content{position:relative;z-index:1;display:flex;flex-direction:column;
-          justify-content:space-between;height:100%;pointer-events:none;}
-        .badge{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.12);
+          justify-content:space-between;gap:12px;width:100%;}
+        .top{display:flex;align-items:flex-start;gap:10px;}
+        .badge{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.12);flex:none;
           display:flex;align-items:center;justify-content:center;transition:background .3s ease;}
         .badge ha-icon{--mdc-icon-size:24px;color:rgba(255,255,255,.75);transition:color .3s;}
-        .meta{margin-top:8px;}
-        .name{font-weight:600;font-size:clamp(.85rem,2.4vw,1.02rem);letter-spacing:-.2px;line-height:1.15;}
+        .meta{min-width:0;}
+        .name{font-weight:600;font-size:clamp(.85rem,2.4vw,1.02rem);letter-spacing:-.2px;line-height:1.15;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .sub{font-size:clamp(.68rem,1.8vw,.8rem);opacity:.6;margin-top:2px;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .pct{position:absolute;top:14px;right:16px;z-index:1;font-weight:700;font-size:1rem;opacity:.85;pointer-events:none;}
         .tile.on .badge{background:rgba(10,10,11,.14);}
         .tile.on .badge ha-icon{color:var(--jma-dark);}
-        .tile.on.solid{background:var(--jma-rose);color:var(--jma-dark);}
+
+        /* slider horizontal (distinct de la carte) */
+        .slider{position:relative;height:36px;border-radius:13px;overflow:hidden;flex:none;
+          background:rgba(255,255,255,.14);touch-action:none;}
+        .slider[hidden]{display:none;}
+        .sfill{position:absolute;left:0;top:0;bottom:0;width:0%;pointer-events:none;
+          background:linear-gradient(90deg,var(--jma-beige) 0%,var(--jma-rose) 100%);
+          transition:width .28s cubic-bezier(.2,.7,.3,1);}
+        .slider.dragging .sfill{transition:none;}
+        .sval{position:absolute;left:12px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
+          font-weight:700;font-size:.82rem;text-shadow:0 1px 2px rgba(0,0,0,.28);}
+        .sicon{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:2;pointer-events:none;
+          --mdc-icon-size:18px;color:rgba(255,255,255,.85);}
+
         .tile::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
           background:radial-gradient(circle at var(--rx,50%) var(--ry,50%),rgba(255,255,255,.35) 0%,transparent 55%);
           opacity:0;transform:scale(.3);}
@@ -148,11 +158,16 @@ class JmaCard extends HTMLElement {
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;">
         <div class="tile" id="tile">
-          <div class="fill" id="fill"></div>
-          <div class="pct" id="pct"></div>
           <div class="content">
-            <div class="badge"><ha-icon id="icon"></ha-icon></div>
-            <div class="meta"><div class="name" id="name"></div><div class="sub" id="sub"></div></div>
+            <div class="top">
+              <div class="badge"><ha-icon id="icon"></ha-icon></div>
+              <div class="meta"><div class="name" id="name"></div><div class="sub" id="sub"></div></div>
+            </div>
+            <div class="slider" id="slider" hidden>
+              <div class="sfill" id="sfill"></div>
+              <span class="sval" id="sval"></span>
+              <ha-icon class="sicon" id="sicon"></ha-icon>
+            </div>
           </div>
         </div>
       </ha-card>`;
@@ -180,16 +195,20 @@ class JmaCard extends HTMLElement {
     this.shadowRoot.getElementById("name").textContent = fn;
     this.shadowRoot.getElementById("sub").textContent = this._subText(s, on, spec);
     tile.classList.toggle("on", on);
-    tile.classList.toggle("solid", on && !spec);
-    const fill = this.shadowRoot.getElementById("fill");
-    const pct = this.shadowRoot.getElementById("pct");
-    if (spec && !this._dragging) {
-      const show = on || spec.kind !== "brightness";
-      fill.style.height = (show ? spec.value : 0) + "%";
-      pct.textContent = show ? spec.value + (spec.unit || "") : "";
-    } else if (!spec) {
-      fill.style.height = "0%";
-      pct.textContent = "";
+
+    const slider = this.shadowRoot.getElementById("slider");
+    if (spec) {
+      slider.hidden = false;
+      if (!this._dragging) {
+        const show = on || spec.kind !== "brightness";
+        const v = show ? spec.value : 0;
+        this.shadowRoot.getElementById("sfill").style.width = v + "%";
+        this.shadowRoot.getElementById("sval").textContent =
+          spec.kind === "temperature" ? (show ? spec.raw + "°" : "") : v + "%";
+        this.shadowRoot.getElementById("sicon").setAttribute("icon", this._sliderIcon(spec.kind));
+      }
+    } else {
+      slider.hidden = true;
     }
   }
 
@@ -203,8 +222,17 @@ class JmaCard extends HTMLElement {
       );
     }
     if (d === "media_player") return s.attributes.media_title || s.attributes.source || s.state;
-    if (spec && spec.kind === "brightness") return on ? spec.value + " %" : "Éteint";
     return on ? "Allumé" : "Éteint";
+  }
+  _sliderIcon(kind) {
+    return (
+      {
+        brightness: "mdi:brightness-6",
+        volume: "mdi:volume-high",
+        position: "mdi:arrow-up-down",
+        temperature: "mdi:thermometer",
+      }[kind] || "mdi:tune-variant"
+    );
   }
   _defaultIcon(d, on) {
     return (
@@ -222,13 +250,39 @@ class JmaCard extends HTMLElement {
     );
   }
 
-  // ----- interactions : tap / drag (slider) / hold (popup) -----------------
+  // ----- interactions : slider horizontal / tap (toggle) / hold (popup) -----
+  _valFromX(e) {
+    const slider = this.shadowRoot.getElementById("slider");
+    const r = slider.getBoundingClientRect();
+    return Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / r.width) * 100)));
+  }
+  _setSliderVisual(v) {
+    this.shadowRoot.getElementById("sfill").style.width = v + "%";
+    this.shadowRoot.getElementById("sval").textContent =
+      this._spec.kind === "temperature" ? this._tempFromPct(v) + "°" : v + "%";
+  }
+
   _onDown(e) {
     const tile = this.shadowRoot.getElementById("tile");
-    tile.setPointerCapture(e.pointerId);
-    this._startY = e.clientY;
+    const slider = this.shadowRoot.getElementById("slider");
     this._spec = this._sliderSpec();
     this._holdFired = false;
+    this._onSlider = !!(this._spec && !slider.hidden && e.composedPath().includes(slider));
+    tile.setPointerCapture(e.pointerId);
+
+    if (this._onSlider) {
+      // glissière : on règle directement à l'endroit touché, puis on suit le doigt
+      this._dragging = true;
+      slider.classList.add("dragging");
+      const v = this._valFromX(e);
+      this._pendingValue = v;
+      this._setSliderVisual(v);
+      return;
+    }
+
+    // reste de la carte : candidat tap (toggle) + appui long (popup)
+    this._startX = e.clientX;
+    this._startY = e.clientY;
     tile.classList.add("active");
     const r = tile.getBoundingClientRect();
     tile.style.setProperty("--rx", ((e.clientX - r.left) / r.width) * 100 + "%");
@@ -242,30 +296,26 @@ class JmaCard extends HTMLElement {
     }
   }
   _onMove(e) {
-    if (this._startY == null) return;
-    const dy = this._startY - e.clientY;
-    if (Math.abs(dy) > 6) clearTimeout(this._holdTimer); // c'est un drag, pas un hold
-    if (!this._spec) return;
-    if (!this._dragging && Math.abs(dy) < 6) return;
-    const tile = this.shadowRoot.getElementById("tile");
-    this._dragging = true;
-    tile.classList.add("dragging");
-    const r = tile.getBoundingClientRect();
-    let v = Math.max(0, Math.min(100, Math.round(((r.bottom - e.clientY) / r.height) * 100)));
-    this._pendingValue = v;
-    this.shadowRoot.getElementById("fill").style.height = v + "%";
-    this.shadowRoot.getElementById("pct").textContent =
-      this._spec.kind === "temperature" ? this._tempFromPct(v) + "°" : v + "%";
+    if (this._onSlider) {
+      const v = this._valFromX(e);
+      this._pendingValue = v;
+      this._setSliderVisual(v);
+      return;
+    }
+    if (this._startX == null) return;
+    const dx = Math.abs(e.clientX - this._startX);
+    const dy = Math.abs(e.clientY - this._startY);
+    if (dx > 6 || dy > 6) clearTimeout(this._holdTimer); // mouvement -> ce n'est pas un appui long
   }
   _onUp() {
     clearTimeout(this._holdTimer);
     const tile = this.shadowRoot.getElementById("tile");
     tile.classList.remove("active");
-    if (this._holdFired) return this._cancel();
-    if (this._dragging && this._pendingValue != null) {
-      this._applySlider(this._spec, this._pendingValue);
+    if (this._onSlider) {
+      if (this._pendingValue != null) this._applySlider(this._spec, this._pendingValue);
       return this._cancel();
     }
+    if (this._holdFired) return this._cancel();
     this._cancel();
     tile.classList.remove("ripple");
     void tile.offsetWidth;
@@ -274,11 +324,13 @@ class JmaCard extends HTMLElement {
   }
   _cancel() {
     clearTimeout(this._holdTimer);
-    const tile = this.shadowRoot.getElementById("tile");
+    const slider = this.shadowRoot.getElementById("slider");
     this._dragging = false;
+    this._onSlider = false;
     this._pendingValue = null;
+    this._startX = null;
     this._startY = null;
-    if (tile) tile.classList.remove("dragging");
+    if (slider) slider.classList.remove("dragging");
     setTimeout(() => this._update(), 120);
   }
 
@@ -668,7 +720,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "jma-card",
   name: "JMA Card",
-  description: "Card flat/iOS : slider plein-tuile + pop-up de contrôle custom (long-press).",
+  description: "Card flat/iOS : slider horizontal + pop-up de contrôle custom (long-press).",
   preview: true,
 });
 console.info(
