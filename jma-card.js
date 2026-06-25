@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.85.0";
+const VERSION = "0.86.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4284,13 +4284,23 @@ jmaDef("jma-card-editor", JmaCardEditor);
 // =============================================================================
 //  TOASTS (notifications popup iOS)
 // =============================================================================
-// niveaux d'importance : info < success < warning < danger < critical (danger++)
+// niveaux d'importance : info < success < warning < critical
+// >>> SOURCE UNIQUE DE VÉRITÉ <<< : modifier une couleur/icône ICI la change PARTOUT
+// (bannière d'alerte, pop-up caméra, toast, icônes). bg = fond bannière pleine largeur,
+// accent = teinte vive (toast / bord pop-up / icône), fg = couleur du texte sur bg.
+const JMA_LEVELS = {
+  info:     { bg: "#3d7fe0", accent: "#40c4ff", icon: "mdi:information",     fg: "#ffffff", toast: 4000 },
+  success:  { bg: "#2faa52", accent: "#69f0ae", icon: "mdi:check-circle",    fg: "#ffffff", toast: 3500 },
+  warning:  { bg: "#ffc23d", accent: "#ffc23d", icon: "mdi:alert",           fg: "#4a3000", toast: 6000 },
+  critical: { bg: "#ff3b30", accent: "#ff1744", icon: "mdi:alert-octagon",   fg: "#ffffff", toast: 0 },
+};
+const JMA_LVL = (l) => JMA_LEVELS[l] || JMA_LEVELS.critical;
 const TOAST_LEVELS = {
-  info:     { color: "#40c4ff", icon: "mdi:information",     duration: 4000 },
-  success:  { color: "#69f0ae", icon: "mdi:check-circle",   duration: 3500 },
-  warning:  { color: "#ffb300", icon: "mdi:alert",          duration: 6000 },
-  danger:   { color: "#ff5252", icon: "mdi:alert-octagon",  duration: 9000 },
-  critical: { color: "#ff1744", icon: "mdi:alert-octagon",  duration: 0 },   // danger++ : reste affiché
+  info:     { color: JMA_LEVELS.info.accent,     icon: JMA_LEVELS.info.icon,     duration: JMA_LEVELS.info.toast },
+  success:  { color: JMA_LEVELS.success.accent,  icon: JMA_LEVELS.success.icon,  duration: JMA_LEVELS.success.toast },
+  warning:  { color: JMA_LEVELS.warning.accent,  icon: JMA_LEVELS.warning.icon,  duration: JMA_LEVELS.warning.toast },
+  danger:   { color: "#ff5252",                  icon: "mdi:alert-octagon",      duration: 9000 },  // alias historique
+  critical: { color: JMA_LEVELS.critical.accent, icon: JMA_LEVELS.critical.icon, duration: JMA_LEVELS.critical.toast },
 };
 function jmaToast(opts) {
   opts = typeof opts === "string" ? { message: opts } : (opts || {});
@@ -5324,24 +5334,28 @@ class JmaNavCard extends HTMLElement {
   _showPopup(d) {
     if (!d || (!d.title && !d.message && !d.camera)) return;
     const $ = (id) => this.shadowRoot.getElementById(id);
-    const ACC = { critical: "#ff1744", warning: "#ffc23d", info: "#40c4ff", success: "#69f0ae" }[d.level] || this._config.color || "#e98aa8";
-    const ICN = d.icon || { critical: "mdi:alert", warning: "mdi:alert-outline", info: "mdi:information", success: "mdi:check-circle" }[d.level] || "mdi:bell-ring";
+    const ACC = (JMA_LEVELS[d.level] && JMA_LEVELS[d.level].accent) || this._config.color || "#e98aa8";
+    const ICN = d.icon || JMA_LVL(d.level).icon || "mdi:bell-ring";
     const sheet = this.shadowRoot.querySelector(".jpsheet"); sheet.style.setProperty("--jp-accent", ACC);
     $("jpicon").setAttribute("icon", ICN);
     $("jptitle").textContent = d.title || "Notification";
     $("jpmsg").textContent = d.message || ""; $("jpmsg").style.display = d.message ? "" : "none";
     this._popDismissable = d.dismissable !== false;
     $("jpx").style.display = this._popDismissable ? "" : "none";
-    // caméra (live snapshot rafraîchi) ou image fixe
-    const cam = $("jpcam"); clearInterval(this._popCamTimer); this._popCam = d.camera || null;
-    if (d.camera || d.image) {
+    // caméra : vrai direct (HLS/WebRTC via ha-camera-stream) plutôt qu'un snapshot
+    // rafraîchi toutes les 2 s (plus fluide, bien moins gourmand sur une tablette 24/7)
+    const cam = $("jpcamwrap"); clearInterval(this._popCamTimer); this._popCam = d.camera || null;
+    cam.innerHTML = "";
+    const camSt = d.camera && this._hass.states[d.camera];
+    if (camSt && customElements.get("ha-camera-stream")) {
       cam.hidden = false;
-      const paint = () => {
-        let src = d.image || null;
-        if (d.camera && this._hass.states[d.camera]) { const p = this._hass.states[d.camera].attributes.entity_picture; if (p) src = p + (p.includes("?") ? "&" : "?") + "_=" + Math.floor(Date.now() / 2000); }
-        if (src) cam.src = src;
-      };
-      paint(); if (d.camera) this._popCamTimer = setInterval(paint, 2000);
+      try {
+        const el = document.createElement("ha-camera-stream");
+        el.hass = this._hass; el.stateObj = camSt; el.muted = true; el.allowExoPlayer = true;
+        cam.appendChild(el);
+      } catch (e) { this._popSnapshot(cam, d); }
+    } else if (d.camera || d.image) {
+      cam.hidden = false; this._popSnapshot(cam, d);
     } else cam.hidden = true;
     // boutons d'action
     const acts = $("jpacts"); acts.innerHTML = "";
@@ -5366,9 +5380,21 @@ class JmaNavCard extends HTMLElement {
     clearTimeout(this._popTimer);
     if (d.timeout) this._popTimer = setTimeout(() => this._closePopup(), (+d.timeout) * 1000);
   }
+  _popSnapshot(cam, d) {
+    // repli : snapshot rafraîchi (caméra sans flux, ou ha-camera-stream indispo)
+    const img = document.createElement("img"); cam.appendChild(img);
+    const paint = () => {
+      let src = d.image || null;
+      if (d.camera && this._hass.states[d.camera]) { const p = this._hass.states[d.camera].attributes.entity_picture; if (p) src = p + (p.includes("?") ? "&" : "?") + "_=" + Math.floor(Date.now() / 2500); }
+      if (src) img.src = src;
+    };
+    paint(); if (d.camera) this._popCamTimer = setInterval(paint, 2500);
+  }
   _closePopup() {
     const p = this.shadowRoot && this.shadowRoot.getElementById("jpop"); if (p) p.classList.remove("on");
     clearInterval(this._popCamTimer); clearTimeout(this._popTimer);
+    // coupe le flux vidéo quand le pop-up se ferme (libère la caméra)
+    const cam = this.shadowRoot && this.shadowRoot.getElementById("jpcamwrap"); if (cam) cam.innerHTML = "";
   }
   _build() {
     const c = this._config;
@@ -5379,10 +5405,10 @@ class JmaNavCard extends HTMLElement {
         display:flex;align-items:center;gap:15px;width:calc(100vw - 24px);max-width:680px;box-sizing:border-box;
         background:#ff3b30;color:#fff;border-radius:18px;padding:16px 22px;cursor:pointer;
         box-shadow:0 14px 44px rgba(255,59,48,.6);}
-      .alertbar.critical{background:#ff3b30;animation:jma-flash 1s infinite;}
-      .alertbar.warning{background:#ffc23d;color:#4a3000;box-shadow:0 14px 44px rgba(255,179,0,.42);}
+      .alertbar.critical{background:${JMA_LEVELS.critical.bg};animation:jma-flash 1s infinite;}
+      .alertbar.warning{background:${JMA_LEVELS.warning.bg};color:${JMA_LEVELS.warning.fg};box-shadow:0 14px 44px rgba(255,179,0,.42);}
       .alertbar.warning .as{opacity:.8;}
-      .alertbar.info{background:#3d7fe0;box-shadow:0 14px 44px rgba(61,127,224,.5);}
+      .alertbar.info{background:${JMA_LEVELS.info.bg};box-shadow:0 14px 44px rgba(61,127,224,.5);}
       .alertbar.warning ha-icon,.alertbar.info ha-icon{animation:none;}
       .alertbar[hidden]{display:none;}
       .alertbar ha-icon{--mdc-icon-size:36px;flex:none;animation:jma-pulse .9s infinite;}
@@ -5429,7 +5455,8 @@ class JmaNavCard extends HTMLElement {
       .jpic ha-icon{--mdc-icon-size:25px;color:#fff;}
       .jpt{font-weight:800;font-size:1.1rem;flex:1;min-width:0;line-height:1.2;}
       .jpx{width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;background:rgba(127,127,127,.18);color:inherit;font-size:1rem;flex:none;}
-      .jpcam{width:calc(100% - 36px);margin:6px 18px 0;border-radius:14px;display:block;background:#000;aspect-ratio:16/9;object-fit:cover;}
+      .jpcam{width:calc(100% - 36px);margin:6px 18px 0;border-radius:14px;overflow:hidden;display:block;background:#000;aspect-ratio:16/9;}
+      .jpcam>*{width:100%;height:100%;display:block;object-fit:cover;}
       .jpm{padding:10px 18px 2px;font-size:.92rem;line-height:1.45;opacity:.86;white-space:pre-line;}
       .jpacts{display:flex;flex-wrap:wrap;gap:8px;padding:14px 18px 18px;}
       .jpb{flex:1;min-width:130px;padding:14px;border:none;border-radius:14px;cursor:pointer;font-weight:800;font-size:.9rem;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--jma-surf3);color:var(--jp-text);transition:transform .08s;}
@@ -5439,7 +5466,7 @@ class JmaNavCard extends HTMLElement {
       <ha-card style="background:none;border:none;box-shadow:none;">
         <div class="jpop" id="jpop"><div class="jpsheet">
           <div class="jph"><div class="jpic"><ha-icon id="jpicon" icon="mdi:bell-ring"></ha-icon></div><div class="jpt" id="jptitle"></div><button class="jpx" id="jpx">✕</button></div>
-          <img class="jpcam" id="jpcam" hidden>
+          <div class="jpcam" id="jpcamwrap" hidden></div>
           <div class="jpm" id="jpmsg"></div>
           <div class="jpacts" id="jpacts"></div>
         </div></div>
@@ -5469,7 +5496,7 @@ class JmaNavCard extends HTMLElement {
     if (a.icon) return a.icon;
     if (/fum|incend|feu/i.test(a.title)) return "mdi:fire-alert";
     if (/fuite|eau/i.test(a.title)) return "mdi:water-alert";
-    return { warning: "mdi:alert", info: "mdi:information" }[a.level] || "mdi:alert";
+    return JMA_LVL(a.level).icon;
   }
   _renderAlerts() {
     const bar = this.shadowRoot && this.shadowRoot.getElementById("alertbar"); if (!bar) return;
