@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;padding:0;}
+  body{min-height:100vh;box-sizing:border-box;padding:12px 12px 110px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:linear-gradient(165deg,#f7f3ea 0%,#f1ebde 55%,#ece5d6 100%);}
+  /* stubs d'éléments HA absents hors Home Assistant */
+  ha-card{display:block;}
+  ha-icon{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:760px;margin:70px auto 0;}
+  .grid .full{grid-column:1/-1;}
+  h4{font:600 13px/1 sans-serif;color:#8a7a5c;margin:18px 4px 2px;}
+</style>
+</head>
+<body>
+  <div class="grid" id="grid"></div>
+
+  <!-- le composant réel -->
+  <script type="module" src="../jma-card.js"></script>
+  <script type="module">
+    // ---- stub minimal de ha-icon (pas de police MDI hors HA) : carré arrondi en currentColor ----
+    customElements.define("ha-icon", class extends HTMLElement {
+      connectedCallback(){ this._render(); }
+      static get observedAttributes(){ return ["icon"]; }
+      attributeChangedCallback(){ this._render(); }
+      _render(){
+        const sz = getComputedStyle(this).getPropertyValue("--mdc-icon-size") || "24px";
+        this.innerHTML = `<svg width="${parseInt(sz)||24}" height="${parseInt(sz)||24}" viewBox="0 0 24 24">`+
+          `<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" opacity="0.85"/></svg>`;
+      }
+    });
+
+    const PALETTE = { color:"#f8a5c2", accent:"#DEC198", dark:"#0a0a0b" };
+
+    const states = {
+      "climate.salon": { entity_id:"climate.salon", state:"heat",
+        attributes:{ friendly_name:"Salon", current_temperature:20.5, temperature:21.5,
+          hvac_action:"heating", min_temp:7, max_temp:30, target_temp_step:0.5,
+          hvac_modes:["off","heat"], supported_features:1 } },
+      "cover.salon": { entity_id:"cover.salon", state:"open",
+        attributes:{ friendly_name:"Volet salon", current_position:60, supported_features:15 } },
+    };
+
+    const hass = {
+      states, language:"fr", themes:{ darkMode:false },
+      callService:(d,s,sd)=>{ console.log("callService",d,s,sd); return Promise.resolve(); },
+      callWS:(msg)=>{
+        if(msg && msg.type==="persistent_notification/get")
+          return Promise.resolve([{ notification_id:"fenetre_cuisine", title:"Fenêtre ouverte",
+            message:"📍 Cuisine — 14:03", created_at:new Date().toISOString() }]);
+        if(msg && msg.type==="logbook/get_events") return Promise.resolve([]);
+        return Promise.resolve([]);
+      },
+      connection:{
+        subscribeEvents:()=>Promise.resolve(()=>{}),
+        subscribeMessage:()=>Promise.resolve(()=>{}),
+        sendMessagePromise:()=>Promise.resolve({}),
+      },
+      formatEntityState:(s)=>s.state, localize:()=>"",
+    };
+
+    function mk(tag, config, cls){
+      const el = document.createElement(tag);
+      el.setConfig({ ...PALETTE, ...config });
+      el.hass = hass;
+      const w = document.createElement("div"); if(cls) w.className = cls; w.appendChild(el);
+      document.getElementById("grid").appendChild(w);
+      return el;
+    }
+
+    await customElements.whenDefined("jma-nav-card");
+
+    // alerte WARNING par défaut (le changement de couleur à valider)
+    window.__jmaAlerts = { w:{ level:"warning", title:"FENÊTRE OUVERTE",
+      message:"Cuisine — depuis 12 min", icon:"" } };
+
+    const nav = mk("jma-nav-card", { items:[
+      { name:"Accueil", icon:"mdi:home", path:"/x/accueil" },
+      { name:"Climat", icon:"mdi:thermometer", path:"/x/climat" },
+      { name:"Agenda", icon:"mdi:calendar", path:"/x/agenda" },
+      { name:"Sécurité", icon:"mdi:shield", path:"/x/securite" },
+    ] }, "full");
+
+    mk("jma-notify-card", { title:"Notifications", hide_empty:false }, "full");
+    mk("jma-climate-tile-card", { entity:"climate.salon" });
+    mk("jma-cover-tile-card", { entity:"cover.salon" });
+
+    // expose pour le script de capture : changer le niveau d'alerte
+    window.__setLevel = (lvl) => {
+      const titles = { warning:["FENÊTRE OUVERTE","Cuisine — depuis 12 min"],
+        critical:["FUITE D'EAU","Machine à laver"], info:["RAPPEL","Sortir les poubelles"] };
+      const t = titles[lvl] || titles.warning;
+      window.__jmaAlerts = { w:{ level:lvl, title:t[0], message:t[1], icon:"" } };
+      nav._renderAlerts();
+    };
+    nav._renderAlerts();
+    window.__ready = true;
+  </script>
+</body>
+</html>
