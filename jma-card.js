@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.82.0";
+const VERSION = "0.83.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4359,7 +4359,8 @@ class JmaNotifyCard extends HTMLElement {
         .nm{font-size:.72rem;opacity:.7;white-space:normal;overflow:hidden;}
         .nx{margin-left:auto;border:none;background:var(--jma-surf3);color:var(--jma-text);border-radius:8px;
           width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;transition:background .2s;}
-        .ntf.confirm .nx{background:#ff3b30;color:#fff;animation:jma-pulse 1s infinite;}
+        .ntf.confirm{outline-color:#ff3b30;}
+        .ntf.confirm .nx{width:auto;padding:0 11px;height:28px;gap:4px;background:#ff3b30;color:#fff;font-weight:800;font-size:.72rem;border-radius:8px;}
         .nhint{font-size:.64rem;opacity:.4;margin-top:3px;text-align:center;}
         .tile.mini{padding:7px 12px;}
         .tile.mini .badge,.tile.mini .name,.tile.mini .test,.tile.mini .cnt,.tile.mini #list,.tile.mini .nhint{display:none;}
@@ -4467,15 +4468,17 @@ class JmaNotifyCard extends HTMLElement {
       const col = (TOAST_LEVELS[lvl] || {}).color || ROSE;
       const row = document.createElement("div"); row.className = "ntf";
       row.style.borderLeft = "3px solid " + col;
-      const danger = lvl === "critical" || (id && id.startsWith("jma_alert_"));
+      const danger = lvl === "critical";
       row.innerHTML = `<div style="min-width:0;flex:1;"><div class="nt">${n.title || "Notification"}</div>` +
         `<div class="nm">${(n.message || "").toString().slice(0, 180)}</div></div>` +
         `<div class="nx"><ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon></div>`;
-      // tap sur la notif (corps ou croix) = marquer lue / supprimer ; 2 taps si danger
+      // tap sur la notif (corps ou croix) = marquer lue / supprimer ; 2 taps (confirmation) seulement si critique
+      const resetNx = () => { row.dataset.confirm = ""; row.classList.remove("confirm"); const x = row.querySelector(".nx"); if (x) x.innerHTML = `<ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon>`; };
       row.addEventListener("click", () => {
         if (danger && row.dataset.confirm !== "1") {
-          row.dataset.confirm = "1"; row.classList.add("confirm"); row.querySelector(".nx ha-icon").setAttribute("icon", "mdi:check-bold");
-          clearTimeout(row._ct); row._ct = setTimeout(() => { row.dataset.confirm = ""; row.classList.remove("confirm"); const i = row.querySelector(".nx ha-icon"); if (i) i.setAttribute("icon", "mdi:close"); }, 3500);
+          row.dataset.confirm = "1"; row.classList.add("confirm");
+          row.querySelector(".nx").innerHTML = `<ha-icon icon="mdi:check-bold" style="--mdc-icon-size:15px;"></ha-icon>Confirmer`;
+          clearTimeout(row._ct); row._ct = setTimeout(resetNx, 3500);
           return;
         }
         this._hass.callService("persistent_notification", "dismiss", { notification_id: id });
