@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.73.0";
+const VERSION = "0.74.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5166,14 +5166,18 @@ class JmaNavCard extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       @keyframes jma-flash{0%,100%{background:#ff3b30;}50%{background:#c1271f;}}
       @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
-      .alertbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1002;
-        display:flex;align-items:center;gap:13px;max-width:calc(100vw - 20px);box-sizing:border-box;
-        background:#ff3b30;color:#fff;border-radius:17px;padding:14px 20px;cursor:pointer;
-        box-shadow:0 10px 34px rgba(255,59,48,.5);animation:jma-flash 1s infinite;}
+      .alertbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:2147483000;
+        display:flex;align-items:center;gap:15px;width:calc(100vw - 24px);max-width:680px;box-sizing:border-box;
+        background:#ff3b30;color:#fff;border-radius:18px;padding:16px 22px;cursor:pointer;
+        box-shadow:0 14px 44px rgba(255,59,48,.6);animation:jma-flash 1s infinite;}
       .alertbar[hidden]{display:none;}
-      .alertbar ha-icon{--mdc-icon-size:30px;flex:none;animation:jma-pulse 1s infinite;}
-      .alertbar .at{font-weight:900;font-size:1.02rem;line-height:1.2;letter-spacing:.2px;}
-      .alertbar .as{font-size:.74rem;font-weight:600;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw;}
+      .alertbar ha-icon{--mdc-icon-size:36px;flex:none;animation:jma-pulse .9s infinite;}
+      .alertbar .at{font-weight:900;font-size:1.18rem;line-height:1.18;letter-spacing:.2px;}
+      .alertbar .as{font-size:.86rem;font-weight:700;opacity:.95;margin-top:2px;}
+      .navdock.alarm{background:#ff3b30;border-color:#ff3b30;box-shadow:0 12px 40px rgba(255,59,48,.6);}
+      .navdock.alarm .navbtn{color:#fff;}
+      .navdock.alarm .navbtn.on{background:rgba(255,255,255,.22);color:#fff;}
+      .navdock.alarm .navbtn[data-sec]{background:rgba(255,255,255,.3);color:#fff;animation:jma-pulse .8s infinite;}
       .navdock{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1000;
         display:flex;gap:3px;padding:6px;border-radius:24px;
         background:rgba(250,247,240,.86);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);
@@ -5200,6 +5204,7 @@ class JmaNavCard extends HTMLElement {
     const dock = this.shadowRoot.getElementById("dock");
     this._items.forEach((it) => {
       const b = document.createElement("button"); b.className = "navbtn"; b.dataset.path = it.path || "";
+      if (/securit/i.test(it.path || "")) b.dataset.sec = "1";
       b.innerHTML = `<ha-icon icon="${it.icon || "mdi:circle"}"></ha-icon><span>${it.name || ""}</span>`;
       b.addEventListener("click", () => this._go(it.path));
       dock.appendChild(b);
@@ -5210,12 +5215,15 @@ class JmaNavCard extends HTMLElement {
     this._onLoc = () => this._highlight();
     window.addEventListener("location-changed", this._onLoc);
     window.addEventListener("popstate", this._onLoc);
-    this._onTest = () => { this._simUntil = Date.now() + 12000; this._checkAlert(); clearTimeout(this._simTimer); this._simTimer = setTimeout(() => { this._simUntil = 0; this._checkAlert(); }, 12000); };
+    // simulation GLOBALE (persiste au changement de page)
+    this._onTest = () => { window.__jmaAlertSim = Date.now() + 15000; this._checkAlert(); };
     window.addEventListener("jma-test-alert", this._onTest);
+    // rafraîchit en continu : masque à l'expiration + garde l'état à jour sans dépendre des push hass
+    this._alertTimer = setInterval(() => this._checkAlert(), 1200);
   }
   _checkAlert() {
     const bar = this.shadowRoot && this.shadowRoot.getElementById("alertbar"); if (!bar || !this._hass) return;
-    const sim = this._simUntil && Date.now() < this._simUntil;
+    const sim = window.__jmaAlertSim && Date.now() < window.__jmaAlertSim;
     const H = this._hass.states; const hits = [];
     Object.keys(H).forEach((e) => {
       if (!e.startsWith("binary_sensor.") || H[e].state !== "on") return;
@@ -5225,12 +5233,14 @@ class JmaNavCard extends HTMLElement {
       else if (["smoke", "gas", "carbon_monoxide"].includes(dc)) hits.push({ t: "FUMÉE / INCENDIE", ic: "mdi:smoke-detector-variant-alert", n: nm });
     });
     if (sim && !hits.length) hits.push({ t: "FUITE D'EAU", ic: "mdi:water-alert", n: "🧪 Simulation de test" });
+    const dock = this.shadowRoot.getElementById("dock");
     if (hits.length) {
       const h = hits[0]; bar.hidden = false;
-      bar.innerHTML = `<ha-icon icon="${h.ic}"></ha-icon><div><div class="at">⚠️ ${h.t} DÉTECTÉE</div><div class="as">${hits.map((x) => x.n).join(" · ")}</div></div>`;
-    } else bar.hidden = true;
+      bar.innerHTML = `<ha-icon icon="${h.ic}"></ha-icon><div><div class="at">⚠️ ${h.t}</div><div class="as">📍 ${hits.map((x) => x.n).join(" · ")}</div></div>`;
+      if (dock) dock.classList.add("alarm");
+    } else { bar.hidden = true; if (dock) dock.classList.remove("alarm"); }
   }
-  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); }
+  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); }
   _go(path) { if (!path) return; history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed")); }
   _highlight() {
     const p = (window.location && window.location.pathname) || "";
