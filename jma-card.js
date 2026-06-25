@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.75.0";
+const VERSION = "0.76.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5236,7 +5236,7 @@ class JmaNavCard extends HTMLElement {
       if (dc === "moisture") leak.push(nm);
       else if (["smoke", "gas", "carbon_monoxide"].includes(dc)) smoke.push(nm);
     });
-    if (sim && !smoke.length && !leak.length) leak.push("🧪 Simulation de test");
+    if (sim && !smoke.length && !leak.length) { smoke.push("🧪 Séjour (simulation)", "🧪 Chambre parents (simulation)"); leak.push("🧪 Machine à laver (simulation)"); }
     const total = smoke.length + leak.length;
     const dock = this.shadowRoot.getElementById("dock");
     if (!total) { bar.hidden = true; if (dock) dock.classList.remove("alarm"); return; }
