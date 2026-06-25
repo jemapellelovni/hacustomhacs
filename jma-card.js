@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.84.0";
+const VERSION = "0.85.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5324,7 +5324,7 @@ class JmaNavCard extends HTMLElement {
   _showPopup(d) {
     if (!d || (!d.title && !d.message && !d.camera)) return;
     const $ = (id) => this.shadowRoot.getElementById(id);
-    const ACC = { critical: "#ff1744", warning: "#ffb300", info: "#40c4ff", success: "#69f0ae" }[d.level] || this._config.color || "#e98aa8";
+    const ACC = { critical: "#ff1744", warning: "#ffc23d", info: "#40c4ff", success: "#69f0ae" }[d.level] || this._config.color || "#e98aa8";
     const ICN = d.icon || { critical: "mdi:alert", warning: "mdi:alert-outline", info: "mdi:information", success: "mdi:check-circle" }[d.level] || "mdi:bell-ring";
     const sheet = this.shadowRoot.querySelector(".jpsheet"); sheet.style.setProperty("--jp-accent", ACC);
     $("jpicon").setAttribute("icon", ICN);
@@ -5380,7 +5380,8 @@ class JmaNavCard extends HTMLElement {
         background:#ff3b30;color:#fff;border-radius:18px;padding:16px 22px;cursor:pointer;
         box-shadow:0 14px 44px rgba(255,59,48,.6);}
       .alertbar.critical{background:#ff3b30;animation:jma-flash 1s infinite;}
-      .alertbar.warning{background:#ff9f0a;box-shadow:0 14px 44px rgba(255,159,10,.55);}
+      .alertbar.warning{background:#ffc23d;color:#4a3000;box-shadow:0 14px 44px rgba(255,179,0,.42);}
+      .alertbar.warning .as{opacity:.8;}
       .alertbar.info{background:#3d7fe0;box-shadow:0 14px 44px rgba(61,127,224,.5);}
       .alertbar.warning ha-icon,.alertbar.info ha-icon{animation:none;}
       .alertbar[hidden]{display:none;}
