@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.87.0";
+const VERSION = "0.88.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5016,7 +5016,7 @@ jmaDef("jma-security-card", JmaSecurityCard);
 class JmaScreensaverCard extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._idle = 0; this._shift = 0; }
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, timeout: 3, show_date: true, days: 7, ...c }; this._cals = c.agenda_entities || c.calendars || []; }
-  getCardSize() { return 1; }
+  getCardSize() { return this._config && this._config.hide_tile ? 0 : 1; }
   static getStubConfig() { return { timeout: 3, weather_entity: "weather.maison" }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
   set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); if (!this._wakeSub && h && h.connection) this._subscribeWake(); }
@@ -5040,6 +5040,8 @@ class JmaScreensaverCard extends HTMLElement {
   disconnectedCallback() { this._disarm(); this._hide(); }
   _build() {
     const c = this._config;
+    // hide_tile : arme la veille SANS afficher de tuile (utile pour la mettre sur toutes les vues)
+    if (c.hide_tile) { this.style.display = "none"; this.shadowRoot.innerHTML = ""; return; }
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       .ssc{display:flex;align-items:center;gap:9px;cursor:pointer;}.ssc .badge{background:var(--jma-surf2);}
       </style>
