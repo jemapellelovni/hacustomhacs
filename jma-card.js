@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.71.0";
+const VERSION = "0.72.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4687,6 +4687,8 @@ class JmaSecurityCard extends HTMLElement {
       .sbab{padding:9px 13px;border-radius:12px;border:1px solid var(--jma-surf3);background:transparent;color:var(--jma-text);font-weight:700;font-size:.76rem;cursor:pointer;display:flex;align-items:center;gap:5px;transition:transform .08s;}
       .sbab:active{transform:scale(.95);}.sbab ha-icon{--mdc-icon-size:17px;}
       .sbab.on{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);}
+      .sbtest{display:flex;align-items:center;gap:5px;padding:8px 12px;border-radius:11px;border:1px dashed var(--jma-rose);background:transparent;color:var(--jma-rose);font-weight:800;font-size:.72rem;cursor:pointer;}
+      .sbtest ha-icon{--mdc-icon-size:16px;}
       .sbpills{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto;}
       .sbp{display:flex;align-items:center;gap:5px;padding:7px 11px;border-radius:999px;background:var(--jma-surf3);font-size:.74rem;font-weight:800;color:var(--jma-text);}
       .sbp ha-icon{--mdc-icon-size:16px;color:var(--jma-icon);}
@@ -4724,6 +4726,12 @@ class JmaSecurityCard extends HTMLElement {
     const ph = this.shadowRoot.getElementById("sbpills");
     this._barPills.forEach((p) => { const el = document.createElement("div"); el.className = "sbp"; el.style.cursor = "pointer"; el.innerHTML = `<ha-icon class="i"></ha-icon><span class="v"></span>`;
       el.addEventListener("click", () => this._openSecList(p)); ph.appendChild(el); p.el = el; });
+    if (c.test) { const tb = document.createElement("button"); tb.className = "sbtest"; tb.innerHTML = `<ha-icon icon="mdi:flask-outline"></ha-icon>Test alerte`;
+      tb.addEventListener("click", () => this._simulateAlert()); this.shadowRoot.querySelector(".secbar").appendChild(tb); }
+  }
+  _simulateAlert() {
+    this._simUntil = Date.now() + 12000; this._updateBar();
+    clearTimeout(this._simTimer); this._simTimer = setTimeout(() => { this._simUntil = 0; this._updateBar(); }, 12000);
   }
   _openSecList(p) {
     if (this._popup) return; const c = this._config;
@@ -4742,6 +4750,7 @@ class JmaSecurityCard extends HTMLElement {
       const bd = this.shadowRoot.getElementById("sbbadge"); bd.classList.toggle("armed", armed && !trig); bd.classList.toggle("trig", trig);
       this.shadowRoot.querySelectorAll(".sbab").forEach((b) => b.classList.toggle("on", al.state === b.dataset.st));
     }
+    const sim = this._simUntil && Date.now() < this._simUntil;
     (this._barPills || []).forEach((p) => {
       const n = p.list.reduce((a, e) => a + (this._st(e) && this._st(e).state === "on" ? 1 : 0), 0);
       const active = n > 0;
@@ -4750,12 +4759,16 @@ class JmaSecurityCard extends HTMLElement {
       p.el.querySelector(".i").setAttribute("icon", active ? p.al : p.ok);
       p.el.querySelector(".v").textContent = active ? (p.mode === "alert" ? "!" : n) : "✓";
     });
+    if (sim) { const lp = (this._barPills || []).find((p) => p.mode === "alert"); if (lp) { lp.el.classList.remove("ok", "live", "warn"); lp.el.classList.add("alert"); lp.el.querySelector(".i").setAttribute("icon", lp.al); lp.el.querySelector(".v").textContent = "!"; } }
     // bandeau d'alerte critique (fuite / fumée)
     const banner = this.shadowRoot.getElementById("sbalert");
     if (banner) {
       const hits = [];
       (this._critical || []).forEach((c) => c.list.forEach((e) => { const s = this._st(e); if (s && s.state === "on") hits.push({ label: c.label, icon: c.icon, name: this._nm(s, e) }); }));
-      if (hits.length) {
+      if (sim) {
+        banner.hidden = false;
+        banner.innerHTML = `<ha-icon icon="mdi:water-alert"></ha-icon><div><div class="at">⚠️ FUITE D'EAU DÉTECTÉE</div><div class="as">🧪 Simulation de test (auto-arrêt 12 s)</div></div>`;
+      } else if (hits.length) {
         const h = hits[0];
         banner.hidden = false;
         banner.innerHTML = `<ha-icon icon="${h.icon}"></ha-icon><div><div class="at">⚠️ ${h.label} DÉTECTÉE</div><div class="as">${hits.map((x) => x.name).join(" · ")}</div></div>`;
