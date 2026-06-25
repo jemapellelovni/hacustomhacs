@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.70.0";
+const VERSION = "0.71.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1486,6 +1486,9 @@ class JmaPopup extends HTMLElement {
         .slrow .si ha-icon{--mdc-icon-size:19px;color:var(--p-text);}
         .slrow.ok .si ha-icon{color:#34c759;}
         .slrow .sn{flex:1;min-width:0;font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .slrow .slm{flex:1;min-width:0;}
+        .slrow .slm .sn{font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .slrow .slm .slsub{font-size:.68rem;opacity:.55;font-weight:600;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .slrow .sv{font-size:.7rem;font-weight:800;padding:4px 11px;border-radius:999px;background:var(--p-track);color:var(--p-mut);white-space:nowrap;}
         .slrow.ok .sv{color:#2ba24a;}
         .slrow.alert{border-color:#ff3b30;background:rgba(255,59,48,.12);}
@@ -2113,19 +2116,32 @@ class JmaPopup extends HTMLElement {
     this._call("alarm_control_panel", svc, data);
     this._code = ""; const cd = this.shadowRoot.getElementById("cd"); if (cd) cd.textContent = "----";
   }
+  _battOf(e) {
+    const base = e.split(".")[1].replace(/_(water_leak|smoke|porte|mouvement|contact_externe_ouvert|alerte_contact_externe|occupancy|person_occupancy|all_occupancy|motion)$/, "");
+    for (const id of ["sensor." + base + "_battery", "sensor." + base + "_batterie"]) {
+      const s = this._hass.states[id]; if (s && !isNaN(parseFloat(s.state))) return "🔋 " + Math.round(parseFloat(s.state)) + "%";
+    }
+    const low = this._hass.states["binary_sensor." + base + "_battery_low"] || this._hass.states["binary_sensor." + base + "_batterie_faible"];
+    if (low && low.state === "on") return "🪫 batt. faible";
+    return null;
+  }
   _secListBody(body) {
     const list = this._config.entities || []; const mode = this._config.mode || "alert"; const icon = this._config.icon || "mdi:shield-home";
     this._slRows = [];
     if (!list.length) { const e = document.createElement("div"); e.className = "slempty"; e.textContent = "Aucun capteur"; body.appendChild(e); return; }
     list.forEach((e) => { const s = this._hass.states[e]; if (!s) return;
       const row = document.createElement("div"); row.className = "slrow";
-      row.innerHTML = `<div class="si"><ha-icon icon="${icon}"></ha-icon></div><div class="sn">${this._secNm(e)}</div><div class="sv"></div>`;
+      row.innerHTML = `<div class="si"><ha-icon icon="${icon}"></ha-icon></div><div class="slm"><div class="sn">${this._secNm(e)}</div><div class="slsub"></div></div><div class="sv"></div>`;
       body.appendChild(row); this._slRows.push({ e, row }); });
     const onTxt = { alert: "ALERTE", warn: "Ouvert", live: "Détecté" }[mode] || "Actif";
     const offTxt = { alert: "OK", warn: "Fermé", live: "Calme" }[mode] || "OK";
     this._seclistTick = () => { this._slRows.forEach(({ e, row }) => { const s = this._hass.states[e]; if (!s) return; const on = s.state === "on";
       row.classList.remove("ok", "alert", "live", "warn"); row.classList.add(on ? mode : "ok");
-      row.querySelector(".sv").textContent = on ? onTxt : offTxt; }); };
+      row.querySelector(".sv").textContent = on ? onTxt : offTxt;
+      const parts = []; const bat = this._battOf(e); if (bat) parts.push(bat);
+      const since = (typeof jmaSince === "function") ? jmaSince(s.last_changed) : null; if (since) parts.push("maj " + since);
+      row.querySelector(".slsub").textContent = parts.join("  ·  ");
+    }); };
     this._seclistTick();
   }
   _secNm(e) {
@@ -4653,6 +4669,12 @@ class JmaSecurityCard extends HTMLElement {
     const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+      @keyframes jma-flash{0%,100%{background:#ff3b30;}50%{background:#c1271f;}}
+      .sbalert{display:flex;align-items:center;gap:12px;background:#ff3b30;color:#fff;border-radius:15px;padding:14px 17px;margin:8px 12px 2px;animation:jma-flash 1s infinite;box-shadow:0 6px 22px rgba(255,59,48,.4);}
+      .sbalert[hidden]{display:none;}
+      .sbalert ha-icon{--mdc-icon-size:30px;flex:none;animation:jma-pulse 1s infinite;}
+      .sbalert .at{font-weight:900;font-size:1rem;line-height:1.2;letter-spacing:.2px;}
+      .sbalert .as{font-size:.74rem;font-weight:600;opacity:.92;}
       .secbar{display:flex;align-items:center;gap:13px;flex-wrap:wrap;padding:11px 14px;}
       .sbstate{display:flex;align-items:center;gap:10px;flex:none;}
       .sbbadge{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;transition:background .3s;}
@@ -4673,7 +4695,9 @@ class JmaSecurityCard extends HTMLElement {
       .sbp.live{background:rgba(106,163,255,.2);color:#3d7fe0;}.sbp.live ha-icon{color:#6aa3ff;}
       .sbp.warn{background:rgba(255,159,10,.2);color:#b87200;}.sbp.warn ha-icon{color:#ff9f0a;}
       </style>
-      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content"><div class="secbar">
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+      <div class="sbalert" id="sbalert" hidden></div>
+      <div class="secbar">
         <div class="sbstate"><div class="sbbadge" id="sbbadge"><ha-icon id="sbic" icon="mdi:shield-home"></ha-icon></div>
           <div><b class="sbst" id="sbst">—</b><span class="sbsub" id="sbsub"></span></div></div>
         <div class="sbarm" id="sbarm"></div>
@@ -4693,6 +4717,10 @@ class JmaSecurityCard extends HTMLElement {
       { list: g.motion, ok: "mdi:motion-sensor-off", al: "mdi:motion-sensor", mode: "live", title: "Mouvement", icon: "mdi:motion-sensor" },
       { list: g.occupancy, ok: "mdi:account-off", al: "mdi:account-alert", mode: "live", title: "Présence", icon: "mdi:account" },
     ].filter((p) => p.list.length);
+    this._critical = [
+      { list: g.leak, label: "FUITE D'EAU", icon: "mdi:water-alert" },
+      { list: g.smoke, label: "FUMÉE / INCENDIE", icon: "mdi:smoke-detector-variant-alert" },
+    ];
     const ph = this.shadowRoot.getElementById("sbpills");
     this._barPills.forEach((p) => { const el = document.createElement("div"); el.className = "sbp"; el.style.cursor = "pointer"; el.innerHTML = `<ha-icon class="i"></ha-icon><span class="v"></span>`;
       el.addEventListener("click", () => this._openSecList(p)); ph.appendChild(el); p.el = el; });
@@ -4722,6 +4750,17 @@ class JmaSecurityCard extends HTMLElement {
       p.el.querySelector(".i").setAttribute("icon", active ? p.al : p.ok);
       p.el.querySelector(".v").textContent = active ? (p.mode === "alert" ? "!" : n) : "✓";
     });
+    // bandeau d'alerte critique (fuite / fumée)
+    const banner = this.shadowRoot.getElementById("sbalert");
+    if (banner) {
+      const hits = [];
+      (this._critical || []).forEach((c) => c.list.forEach((e) => { const s = this._st(e); if (s && s.state === "on") hits.push({ label: c.label, icon: c.icon, name: this._nm(s, e) }); }));
+      if (hits.length) {
+        const h = hits[0];
+        banner.hidden = false;
+        banner.innerHTML = `<ha-icon icon="${h.icon}"></ha-icon><div><div class="at">⚠️ ${h.label} DÉTECTÉE</div><div class="as">${hits.map((x) => x.name).join(" · ")}</div></div>`;
+      } else banner.hidden = true;
+    }
   }
   _buildPanel() {
     const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
