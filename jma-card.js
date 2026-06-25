@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.66.0";
+const VERSION = "0.67.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3294,23 +3294,37 @@ class JmaAgendaCard extends HTMLElement {
     p.addEventListener("jma-close", () => { this._popup = null; });
     document.body.appendChild(p); this._popup = p;
   }
+  _palette(i) { return ["#e98aa8", "#6aa3ff", "#4cc38a", "#f5b461", "#b794f6", "#4fd1c5"][i % 6]; }
+  _calName(i) { const e = this._cals[i]; const s = e && this._hass.states[e]; return (this._config.names && this._config.names[e]) || (s && s.attributes.friendly_name) || (e || "").split(".")[1] || ""; }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
-        .content{gap:6px;}
-        #list{display:flex;flex-direction:column;gap:0;}
-        .day{display:flex;align-items:baseline;gap:7px;font-weight:800;font-size:.64rem;opacity:.55;margin-top:7px;margin-bottom:1px;text-transform:uppercase;letter-spacing:.4px;}
-        .day .s{color:var(--jma-rose);opacity:.95;font-weight:700;text-transform:none;letter-spacing:0;font-size:.62rem;}
-        .ev{display:flex;gap:8px;align-items:center;padding:3px 2px;}
-        .dot{width:6px;height:6px;border-radius:50%;background:var(--jma-rose);flex:none;}
-        .t{font-size:.69rem;opacity:.65;min-width:36px;font-weight:700;font-variant-numeric:tabular-nums;}
-        .ti{font-size:.77rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
-        .more,.empty{font-size:.7rem;opacity:.5;padding:3px 2px;}
+        .content{gap:9px;}
+        .aleg{display:flex;gap:12px;flex-wrap:wrap;margin:1px 0 -2px;}
+        .lg{display:flex;align-items:center;gap:5px;font-size:.63rem;font-weight:700;opacity:.7;}
+        .lg .d{width:9px;height:9px;border-radius:3px;flex:none;}
+        #list{display:flex;flex-direction:column;}
+        .aday{display:flex;align-items:center;gap:11px;margin:13px 0 4px;}
+        .aday:first-child{margin-top:2px;}
+        .adn{width:40px;height:46px;border-radius:13px;background:var(--jma-surf3);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none;line-height:1;}
+        .adn .dnum{font-weight:800;font-size:1.15rem;}
+        .adn .dwd{font-size:.54rem;font-weight:800;text-transform:uppercase;opacity:.55;letter-spacing:.5px;margin-top:2px;}
+        .aday.today .adn{background:var(--jma-grad);color:var(--jma-dark);}.aday.today .adn .dwd{opacity:.85;}
+        .adlbl{font-weight:800;font-size:.92rem;text-transform:capitalize;}
+        .aday.today .adlbl{color:var(--jma-rose);}
+        .adsaint{font-size:.64rem;color:var(--jma-rose);opacity:.85;font-weight:700;margin-left:auto;text-align:right;}
+        .aev{display:flex;align-items:stretch;gap:10px;padding:5px 0 5px 51px;}
+        .aevbar{width:3.5px;border-radius:3px;flex:none;background:var(--jma-rose);}
+        .aevt{font-size:.72rem;font-weight:800;opacity:.65;min-width:40px;font-variant-numeric:tabular-nums;padding-top:1px;}
+        .aevti{font-size:.84rem;font-weight:600;flex:1;line-height:1.25;}
+        .aevd{font-size:.66rem;opacity:.45;font-weight:600;}
+        .more,.empty{font-size:.74rem;opacity:.5;padding:6px 2px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
         <div class="top"><div class="badge"><ha-icon icon="mdi:calendar-month"></ha-icon></div>
           <div class="meta"><div class="name">${c.title}</div><div class="sub" id="sub"></div></div></div>
+        <div class="aleg" id="leg"></div>
         <div id="list"></div>
       </div></div></ha-card>`;
     this.shadowRoot.querySelector(".tile").style.cursor = "pointer";
@@ -3323,37 +3337,46 @@ class JmaAgendaCard extends HTMLElement {
     const iso = (d) => d.toISOString();
     const evs = [];
     try {
-      for (const cal of this._cals) {
-        const r = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(iso(start))}&end=${encodeURIComponent(iso(end))}`);
-        (r || []).forEach((e) => evs.push(e));
+      for (let i = 0; i < this._cals.length; i++) {
+        const r = await this._hass.callApi("GET", `calendars/${this._cals[i]}?start=${encodeURIComponent(iso(start))}&end=${encodeURIComponent(iso(end))}`);
+        (r || []).forEach((e) => { e._ci = i; evs.push(e); });
       }
     } catch (e) {}
     this._loading = false; this._render(evs);
   }
   _render(evs) {
+    const leg = this.shadowRoot.getElementById("leg");
+    if (this._cals.length > 1) leg.innerHTML = this._cals.map((e, i) => `<div class="lg"><span class="d" style="background:${this._palette(i)}"></span>${this._calName(i)}</div>`).join("");
+    else leg.innerHTML = "";
     const list = this.shadowRoot.getElementById("list"); const sub = this.shadowRoot.getElementById("sub");
     list.innerHTML = "";
-    evs = evs.map((e) => { const s = e.start && (e.start.dateTime || e.start.date); return { d: new Date(s), allday: !(e.start && e.start.dateTime), e }; })
+    evs = evs.map((e) => { const s = e.start && (e.start.dateTime || e.start.date); return { d: new Date(s), allday: !(e.start && e.start.dateTime), ci: e._ci || 0, e }; })
       .filter((x) => !isNaN(x.d)).sort((a, b) => a.d - b.d);
-    sub.textContent = `${this._config.days} j • ${evs.length} évén.`;
+    sub.textContent = `${this._config.days} jours · ${evs.length} événement${evs.length > 1 ? "s" : ""}`;
     if (!evs.length) { const x = document.createElement("div"); x.className = "empty"; x.textContent = "Rien de prévu 🎉"; list.appendChild(x); return; }
-    const dn = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
-    const max = this._config.max || 6;
+    const dn = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tom = new Date(today); tom.setDate(tom.getDate() + 1);
+    const dk = (d) => d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+    const max = this._config.max || 12;
     const shown = evs.slice(0, max);
     let last = "";
-    shown.forEach(({ d, allday, e }) => {
-      const dk = d.toDateString();
-      if (dk !== last) {
-        last = dk; const h = document.createElement("div"); h.className = "day";
+    shown.forEach(({ d, allday, ci, e }) => {
+      const key = dk(d);
+      if (key !== last) {
+        last = key; const h = document.createElement("div"); h.className = "aday"; if (key === dk(today)) h.classList.add("today");
         const saint = (typeof SAINTS !== "undefined" && (SAINTS[d.getMonth()] || [])[d.getDate() - 1]) || "";
         const special = /^(N\.-D\.|Toussaint|Défunts|Assomption|Annonciation|Présentation|Transfiguration|Nativité|La Sainte|Imm\.|Noël|Conversion|Marie$)/.test(saint);
         const sl = saint ? (special ? saint : "St" + (/^[AÉEIOUYH]/i.test(saint) ? "e " : " ") + saint) : "";
-        h.innerHTML = `<span>${dn[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}</span>` + (sl ? `<span class="s">✦ ${sl}</span>` : "");
+        const lbl = key === dk(today) ? "Aujourd'hui" : key === dk(tom) ? "Demain" : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" });
+        h.innerHTML = `<div class="adn"><span class="dnum">${d.getDate()}</span><span class="dwd">${dn[d.getDay()]}</span></div>` +
+          `<div class="adlbl">${lbl}</div>` + (sl ? `<div class="adsaint">✦ ${sl}</div>` : "");
         list.appendChild(h);
       }
-      const row = document.createElement("div"); row.className = "ev";
-      const tt = allday ? "jour" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
-      row.innerHTML = `<span class="dot"></span><span class="t">${tt}</span><span class="ti">${e.summary || e.message || "(sans titre)"}</span>`;
+      const row = document.createElement("div"); row.className = "aev";
+      const tt = allday ? "Jour" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
+      const col = this._palette(ci);
+      row.innerHTML = `<div class="aevbar" style="background:${col}"></div><div class="aevt">${tt}</div><div class="aevti">${e.summary || e.message || "(sans titre)"}</div>`;
       list.appendChild(row);
     });
     if (evs.length > max) { const m = document.createElement("div"); m.className = "more"; m.textContent = "+ " + (evs.length - max) + " autres…"; list.appendChild(m); }
