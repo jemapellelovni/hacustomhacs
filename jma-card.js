@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.80.0";
+const VERSION = "0.81.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4342,32 +4342,79 @@ class JmaNotifyCard extends HTMLElement {
   set hass(h) { this._hass = h; if (!this._built) this._build(); jmaApplyTheme(this, h, this._config); if (!this._subbed) this._subscribe(); }
   _build() {
     this.shadowRoot.innerHTML =
-      `<style>${BASE_CSS}:host{--jma-rose:${ROSE};--jma-beige:${BEIGE};--jma-dark:${DARK};}
+      `<style>${BASE_CSS}:host{--jma-rose:${ROSE};--jma-beige:${BEIGE};--jma-dark:${DARK};--nh-sheet:#fbf8f1;--nh-line:rgba(60,48,30,.12);--nh-text:#2a2418;}
+        :host(.dark){--nh-sheet:#1d1d20;--nh-line:rgba(255,255,255,.1);--nh-text:#fff;}
+        @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
         .cnt{min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--jma-rose);color:var(--jma-dark);
           font-weight:800;font-size:.74rem;display:none;align-items:center;justify-content:center;flex:none;}
         .cnt.show{display:flex;}
-        .test{border:none;background:rgba(255,255,255,.12);color:#fff;border-radius:9px;cursor:pointer;
-          width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;}
-        .test:active{transform:scale(.9);} .test ha-icon{--mdc-icon-size:18px;}
-        #list{display:flex;flex-direction:column;gap:6px;}
-        .ntf{display:flex;gap:8px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:11px;padding:8px 10px;}
-        .nt{font-weight:700;font-size:.78rem;}
-        .nm{font-size:.72rem;opacity:.72;white-space:normal;overflow:hidden;}
-        .nx{margin-left:auto;border:none;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;cursor:pointer;
+        .iconbtn{border:none;background:var(--jma-surf3);color:var(--jma-text);border-radius:9px;cursor:pointer;
+          width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+        .iconbtn:active{transform:scale(.9);} .iconbtn ha-icon{--mdc-icon-size:18px;}
+        #list{display:flex;flex-direction:column;gap:6px;margin-top:2px;}
+        .ntf{display:flex;gap:8px;align-items:center;background:var(--jma-surf2);border-radius:11px;padding:9px 11px;cursor:pointer;transition:outline .15s,background .2s;}
+        .ntf:active{background:var(--jma-surf3);}
+        .ntf.confirm{outline:2px solid #ff3b30;outline-offset:-1px;}
+        .nt{font-weight:700;font-size:.8rem;}
+        .nm{font-size:.72rem;opacity:.7;white-space:normal;overflow:hidden;}
+        .nx{margin-left:auto;border:none;background:var(--jma-surf3);color:var(--jma-text);border-radius:8px;
           width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;transition:background .2s;}
-        .nx.confirm{background:#ff3b30;animation:jma-pulse 1s infinite;}
-        .empty{font-size:.74rem;opacity:.55;padding:2px;}
+        .ntf.confirm .nx{background:#ff3b30;color:#fff;animation:jma-pulse 1s infinite;}
+        .nhint{font-size:.64rem;opacity:.4;margin-top:3px;text-align:center;}
+        .tile.mini{padding:7px 12px;}
+        .tile.mini .badge,.tile.mini .name,.tile.mini .test,.tile.mini .cnt,.tile.mini #list,.tile.mini .nhint{display:none;}
+        .tile.mini .sub{font-size:.72rem;opacity:.5;}
+        /* popup historique */
+        .histpop{position:fixed;inset:0;z-index:1200;background:rgba(20,16,10,.45);display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+        .histpop.on{display:flex;}
+        .histsheet{background:var(--nh-sheet);color:var(--nh-text);border:1px solid var(--nh-line);border-radius:20px;width:calc(100% - 34px);max-width:440px;max-height:74vh;display:flex;flex-direction:column;padding:16px;box-shadow:0 22px 64px rgba(0,0,0,.45);}
+        .histhead{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+        .histhead .ht{font-weight:800;font-size:1.02rem;flex:1;}
+        .histx{width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--nh-text);font-size:1rem;flex:none;}
+        .histlist{overflow:auto;display:flex;flex-direction:column;gap:7px;flex:1;}
+        .hrow{display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--nh-line);}
+        .hrow:first-child{border-top:none;}
+        .hbar{width:3px;align-self:stretch;border-radius:3px;flex:none;min-height:26px;}
+        .hrow .ht2{font-weight:700;font-size:.82rem;}
+        .hrow .hm{font-size:.72rem;opacity:.65;}
+        .hrow .htime{font-size:.62rem;opacity:.45;font-weight:700;margin-left:auto;white-space:nowrap;}
+        .histclear{margin-top:11px;border:1px solid var(--nh-line);background:transparent;color:var(--nh-text);border-radius:12px;padding:10px;cursor:pointer;font-weight:700;font-size:.82rem;}
+        .histempty{opacity:.5;text-align:center;padding:24px 0;font-size:.85rem;}
       </style>
-      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat" id="tile"><div class="content">
         <div class="top"><div class="badge"><ha-icon id="bic" icon="mdi:bell-outline"></ha-icon></div>
           <div class="meta"><div class="name">${this._config.title || "Notifications"}</div><div class="sub" id="sub">—</div></div>
-          <button class="test" id="test" title="Tester une notif"><ha-icon icon="mdi:bell-ring"></ha-icon></button>
+          <button class="iconbtn" id="hist" title="Historique des notifications"><ha-icon icon="mdi:history"></ha-icon></button>
+          <button class="iconbtn test" id="test" title="Tester une notif"><ha-icon icon="mdi:bell-ring"></ha-icon></button>
           <div class="cnt" id="cnt"></div></div>
         <div id="list"></div>
+        <div class="nhint" id="nhint">Touche une notification pour la marquer lue</div>
+      </div></div>
+      <div class="histpop" id="histpop"><div class="histsheet">
+        <div class="histhead"><div class="ht">🕘 Historique des notifications</div><button class="histx" id="histx">✕</button></div>
+        <div class="histlist" id="histlist"></div>
+        <button class="histclear" id="histclear">Vider l'historique</button>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("test").addEventListener("click", () =>
       jmaToast({ title: "Test", message: "Notification de test JMA 🔔", icon: "mdi:bell-ring", color: ROSE }));
+    this.shadowRoot.getElementById("hist").addEventListener("click", () => this._openHist());
+    this.shadowRoot.getElementById("histx").addEventListener("click", () => this.shadowRoot.getElementById("histpop").classList.remove("on"));
+    this.shadowRoot.getElementById("histclear").addEventListener("click", () => { try { localStorage.setItem("jma_notif_hist", "[]"); } catch (e) {} this._renderHist(); });
+    this.shadowRoot.getElementById("histpop").addEventListener("click", (e) => { if (e.target.id === "histpop") e.currentTarget.classList.remove("on"); });
     this._built = true;
+  }
+  _hist() { try { return JSON.parse(localStorage.getItem("jma_notif_hist") || "[]"); } catch (e) { return []; } }
+  _pushHist(n, lvl) { try { const h = this._hist(); h.unshift({ t: n.title || "Notification", m: (n.message || "").toString().slice(0, 220), lvl: lvl, ts: Date.now() }); if (h.length > 80) h.length = 80; localStorage.setItem("jma_notif_hist", JSON.stringify(h)); } catch (e) {} }
+  _openHist() { this._renderHist(); this.shadowRoot.getElementById("histpop").classList.add("on"); }
+  _renderHist() {
+    const host = this.shadowRoot.getElementById("histlist"); const h = this._hist();
+    if (!h.length) { host.innerHTML = `<div class="histempty">Aucun historique pour l'instant</div>`; return; }
+    host.innerHTML = h.map((x) => {
+      const col = (TOAST_LEVELS[x.lvl] || {}).color || ROSE;
+      const d = new Date(x.ts); const ago = jmaSince(x.ts ? d.toISOString() : null);
+      const when = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + " " + ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
+      return `<div class="hrow"><div class="hbar" style="background:${col}"></div><div style="flex:1;min-width:0;"><div class="ht2">${x.t}</div><div class="hm">${x.m}</div></div><div class="htime">${when}</div></div>`;
+    }).join("");
   }
   async _subscribe() {
     if (!this._hass || !this._hass.connection) return;
@@ -4388,13 +4435,16 @@ class JmaNotifyCard extends HTMLElement {
     const list = this.shadowRoot.getElementById("list");
     const sub = this.shadowRoot.getElementById("sub");
     const cnt = this.shadowRoot.getElementById("cnt");
+    const tile = this.shadowRoot.getElementById("tile");
     list.innerHTML = "";
-    this.style.display = (this._config.hide_empty && !arr.length) ? "none" : "";
-    cnt.classList.toggle("show", arr.length > 0);
+    const empty = !arr.length;
+    // carte masquée si vide, SAUF un mini-bandeau discret avec le bouton historique
+    tile.classList.toggle("mini", empty && !!this._config.hide_empty);
+    cnt.classList.toggle("show", !empty);
     cnt.textContent = arr.length;
-    sub.textContent = arr.length ? arr.length + " active" + (arr.length > 1 ? "s" : "") : "Aucune notification";
-    this.shadowRoot.getElementById("bic").setAttribute("icon", arr.length ? "mdi:bell-badge" : "mdi:bell-outline");
-    if (!arr.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Tout est lu 🎉"; list.appendChild(e); }
+    sub.textContent = empty ? "Aucune notification" : arr.length + " active" + (arr.length > 1 ? "s" : "");
+    this.shadowRoot.getElementById("bic").setAttribute("icon", empty ? "mdi:bell-outline" : "mdi:bell-badge");
+    this.shadowRoot.getElementById("nhint").style.display = empty ? "none" : "";
     arr.forEach((n) => {
       const id = n.notification_id || n.id;
       const lvl = jmaGuessLevel((n.title || "") + " " + (n.message || ""));
@@ -4404,13 +4454,12 @@ class JmaNotifyCard extends HTMLElement {
       const danger = lvl === "critical" || (id && id.startsWith("jma_alert_"));
       row.innerHTML = `<div style="min-width:0;flex:1;"><div class="nt">${n.title || "Notification"}</div>` +
         `<div class="nm">${(n.message || "").toString().slice(0, 180)}</div></div>` +
-        `<button class="nx" title="Rejeter"><ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon></button>`;
-      const nx = row.querySelector(".nx");
-      nx.addEventListener("click", (ev) => {
-        const b = ev.currentTarget;
-        if (danger && b.dataset.confirm !== "1") {
-          b.dataset.confirm = "1"; b.classList.add("confirm"); b.innerHTML = `<ha-icon icon="mdi:check-bold" style="--mdc-icon-size:16px;"></ha-icon>`; b.title = "Confirmer le retrait";
-          clearTimeout(b._ct); b._ct = setTimeout(() => { b.dataset.confirm = ""; b.classList.remove("confirm"); b.innerHTML = `<ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon>`; b.title = "Rejeter"; }, 3500);
+        `<div class="nx"><ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon></div>`;
+      // tap sur la notif (corps ou croix) = marquer lue / supprimer ; 2 taps si danger
+      row.addEventListener("click", () => {
+        if (danger && row.dataset.confirm !== "1") {
+          row.dataset.confirm = "1"; row.classList.add("confirm"); row.querySelector(".nx ha-icon").setAttribute("icon", "mdi:check-bold");
+          clearTimeout(row._ct); row._ct = setTimeout(() => { row.dataset.confirm = ""; row.classList.remove("confirm"); const i = row.querySelector(".nx ha-icon"); if (i) i.setAttribute("icon", "mdi:close"); }, 3500);
           return;
         }
         this._hass.callService("persistent_notification", "dismiss", { notification_id: id });
@@ -4418,6 +4467,7 @@ class JmaNotifyCard extends HTMLElement {
       list.appendChild(row);
       if (id && !this._seen.has(id)) {
         this._seen.add(id);
+        this._pushHist(n, lvl);
         if (this._ever) jmaToast({ title: n.title || "Notification", message: (n.message || "").toString().slice(0, 120), level: lvl });
       }
     });
