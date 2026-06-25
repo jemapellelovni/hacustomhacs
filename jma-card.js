@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.67.0";
+const VERSION = "0.68.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3320,6 +3320,19 @@ class JmaAgendaCard extends HTMLElement {
         .aevti{font-size:.84rem;font-weight:600;flex:1;line-height:1.25;}
         .aevd{font-size:.66rem;opacity:.45;font-weight:600;}
         .more,.empty{font-size:.74rem;opacity:.5;padding:6px 2px;}
+        /* mode blocs */
+        .ablock{background:var(--jma-surf2);border:1px solid var(--jma-surf3);border-radius:17px;padding:12px 14px 10px;margin-bottom:9px;}
+        .ablock.today{border-color:var(--jma-rose);background:linear-gradient(180deg,rgba(248,165,194,.1),var(--jma-surf2) 60%);}
+        .abh{display:flex;align-items:center;gap:11px;margin-bottom:9px;}
+        .ablock.today .adlbl{color:var(--jma-rose);}
+        .ablock.today .adn{background:var(--jma-grad);color:var(--jma-dark);}
+        .abct{margin-left:auto;font-size:.62rem;font-weight:800;opacity:.45;background:var(--jma-surf3);padding:3px 8px;border-radius:999px;}
+        .abev{display:flex;align-items:stretch;gap:10px;padding:6px 0;}
+        .abev + .abev{border-top:1px solid var(--jma-surf3);}
+        .abevbar{width:3.5px;border-radius:3px;flex:none;}
+        .abevt{font-size:.74rem;font-weight:800;opacity:.7;min-width:42px;font-variant-numeric:tabular-nums;padding-top:1px;}
+        .abevti{font-size:.86rem;font-weight:600;flex:1;line-height:1.25;}
+        .ablock.empty-day{opacity:.5;}.ablock.empty-day .abh{margin-bottom:0;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
         <div class="top"><div class="badge"><ha-icon icon="mdi:calendar-month"></ha-icon></div>
@@ -3360,25 +3373,35 @@ class JmaAgendaCard extends HTMLElement {
     const dk = (d) => d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
     const max = this._config.max || 12;
     const shown = evs.slice(0, max);
-    let last = "";
-    shown.forEach(({ d, allday, ci, e }) => {
-      const key = dk(d);
-      if (key !== last) {
-        last = key; const h = document.createElement("div"); h.className = "aday"; if (key === dk(today)) h.classList.add("today");
-        const saint = (typeof SAINTS !== "undefined" && (SAINTS[d.getMonth()] || [])[d.getDate() - 1]) || "";
-        const special = /^(N\.-D\.|Toussaint|Défunts|Assomption|Annonciation|Présentation|Transfiguration|Nativité|La Sainte|Imm\.|Noël|Conversion|Marie$)/.test(saint);
-        const sl = saint ? (special ? saint : "St" + (/^[AÉEIOUYH]/i.test(saint) ? "e " : " ") + saint) : "";
-        const lbl = key === dk(today) ? "Aujourd'hui" : key === dk(tom) ? "Demain" : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" });
+    // groupage par jour
+    const days = []; const idx = {};
+    shown.forEach((ev) => { const key = dk(ev.d); if (idx[key] == null) { idx[key] = days.length; days.push({ key, d: ev.d, items: [] }); } days[idx[key]].items.push(ev); });
+    const saintOf = (d) => { const saint = (typeof SAINTS !== "undefined" && (SAINTS[d.getMonth()] || [])[d.getDate() - 1]) || "";
+      const special = /^(N\.-D\.|Toussaint|Défunts|Assomption|Annonciation|Présentation|Transfiguration|Nativité|La Sainte|Imm\.|Noël|Conversion|Marie$)/.test(saint);
+      return saint ? (special ? saint : "St" + (/^[AÉEIOUYH]/i.test(saint) ? "e " : " ") + saint) : ""; };
+    const labelOf = (d, key) => key === dk(today) ? "Aujourd'hui" : key === dk(tom) ? "Demain" : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" });
+    const evRow = (ev, cls) => { const tt = ev.allday ? "Jour" : ("" + ev.d.getHours()).padStart(2, "0") + ":" + ("" + ev.d.getMinutes()).padStart(2, "0");
+      return `<div class="${cls}" style="display:flex;align-items:stretch;gap:10px;"><div class="${cls}bar" style="background:${this._palette(ev.ci)}"></div><div class="${cls}t">${tt}</div><div class="${cls}ti">${ev.e.summary || ev.e.message || "(sans titre)"}</div></div>`; };
+    if (this._config.blocks) {
+      days.forEach(({ key, d, items }) => {
+        const b = document.createElement("div"); b.className = "ablock" + (key === dk(today) ? " today" : "");
+        const sl = saintOf(d);
+        b.innerHTML = `<div class="abh"><div class="adn"><span class="dnum">${d.getDate()}</span><span class="dwd">${dn[d.getDay()]}</span></div>` +
+          `<div class="adlbl">${labelOf(d, key)}</div><div class="abct">${items.length} évén.</div></div>` +
+          (sl ? `<div class="adsaint" style="margin:-4px 0 7px 51px;">✦ ${sl}</div>` : "") +
+          items.map((ev) => evRow(ev, "abev")).join("");
+        list.appendChild(b);
+      });
+    } else {
+      days.forEach(({ key, d, items }) => {
+        const h = document.createElement("div"); h.className = "aday"; if (key === dk(today)) h.classList.add("today");
+        const sl = saintOf(d);
         h.innerHTML = `<div class="adn"><span class="dnum">${d.getDate()}</span><span class="dwd">${dn[d.getDay()]}</span></div>` +
-          `<div class="adlbl">${lbl}</div>` + (sl ? `<div class="adsaint">✦ ${sl}</div>` : "");
+          `<div class="adlbl">${labelOf(d, key)}</div>` + (sl ? `<div class="adsaint">✦ ${sl}</div>` : "");
         list.appendChild(h);
-      }
-      const row = document.createElement("div"); row.className = "aev";
-      const tt = allday ? "Jour" : ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
-      const col = this._palette(ci);
-      row.innerHTML = `<div class="aevbar" style="background:${col}"></div><div class="aevt">${tt}</div><div class="aevti">${e.summary || e.message || "(sans titre)"}</div>`;
-      list.appendChild(row);
-    });
+        items.forEach((ev) => { const r = document.createElement("div"); r.innerHTML = evRow(ev, "aev"); list.appendChild(r.firstChild); });
+      });
+    }
     if (evs.length > max) { const m = document.createElement("div"); m.className = "more"; m.textContent = "+ " + (evs.length - max) + " autres…"; list.appendChild(m); }
   }
 }
