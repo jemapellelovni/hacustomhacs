@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.74.0";
+const VERSION = "0.75.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5174,6 +5174,10 @@ class JmaNavCard extends HTMLElement {
       .alertbar ha-icon{--mdc-icon-size:36px;flex:none;animation:jma-pulse .9s infinite;}
       .alertbar .at{font-weight:900;font-size:1.18rem;line-height:1.18;letter-spacing:.2px;}
       .alertbar .as{font-size:.86rem;font-weight:700;opacity:.95;margin-top:2px;}
+      .alertbar .acol{display:flex;flex-direction:column;gap:5px;min-width:0;}
+      .alertbar .aline{display:flex;align-items:center;gap:8px;font-size:.86rem;font-weight:700;line-height:1.2;}
+      .alertbar .aline ha-icon{--mdc-icon-size:19px;animation:none;}
+      .alertbar .aline b{font-weight:900;}
       .navdock.alarm{background:#ff3b30;border-color:#ff3b30;box-shadow:0 12px 40px rgba(255,59,48,.6);}
       .navdock.alarm .navbtn{color:#fff;}
       .navdock.alarm .navbtn.on{background:rgba(255,255,255,.22);color:#fff;}
@@ -5224,21 +5228,29 @@ class JmaNavCard extends HTMLElement {
   _checkAlert() {
     const bar = this.shadowRoot && this.shadowRoot.getElementById("alertbar"); if (!bar || !this._hass) return;
     const sim = window.__jmaAlertSim && Date.now() < window.__jmaAlertSim;
-    const H = this._hass.states; const hits = [];
+    const H = this._hass.states; const smoke = [], leak = [];
     Object.keys(H).forEach((e) => {
       if (!e.startsWith("binary_sensor.") || H[e].state !== "on") return;
       const dc = H[e].attributes.device_class;
       const nm = (H[e].attributes.friendly_name || e).replace(/\s+(Fumée|Humidité|Water leak|Smoke)$/i, "");
-      if (dc === "moisture") hits.push({ t: "FUITE D'EAU", ic: "mdi:water-alert", n: nm });
-      else if (["smoke", "gas", "carbon_monoxide"].includes(dc)) hits.push({ t: "FUMÉE / INCENDIE", ic: "mdi:smoke-detector-variant-alert", n: nm });
+      if (dc === "moisture") leak.push(nm);
+      else if (["smoke", "gas", "carbon_monoxide"].includes(dc)) smoke.push(nm);
     });
-    if (sim && !hits.length) hits.push({ t: "FUITE D'EAU", ic: "mdi:water-alert", n: "🧪 Simulation de test" });
+    if (sim && !smoke.length && !leak.length) leak.push("🧪 Simulation de test");
+    const total = smoke.length + leak.length;
     const dock = this.shadowRoot.getElementById("dock");
-    if (hits.length) {
-      const h = hits[0]; bar.hidden = false;
-      bar.innerHTML = `<ha-icon icon="${h.ic}"></ha-icon><div><div class="at">⚠️ ${h.t}</div><div class="as">📍 ${hits.map((x) => x.n).join(" · ")}</div></div>`;
-      if (dock) dock.classList.add("alarm");
-    } else { bar.hidden = true; if (dock) dock.classList.remove("alarm"); }
+    if (!total) { bar.hidden = true; if (dock) dock.classList.remove("alarm"); return; }
+    bar.hidden = false; if (dock) dock.classList.add("alarm");
+    if (total === 1) {
+      const isSmoke = smoke.length > 0; const name = isSmoke ? smoke[0] : leak[0];
+      bar.innerHTML = `<ha-icon icon="${isSmoke ? "mdi:fire-alert" : "mdi:water-alert"}"></ha-icon>` +
+        `<div><div class="at">⚠️ ${isSmoke ? "FUMÉE / INCENDIE" : "FUITE D'EAU"}</div><div class="as">📍 ${name}</div></div>`;
+    } else {
+      const lines = [];
+      if (smoke.length) lines.push(`<div class="aline"><ha-icon icon="mdi:fire-alert"></ha-icon><span><b>Fumée</b> — ${smoke.join(" · ")}</span></div>`);
+      if (leak.length) lines.push(`<div class="aline"><ha-icon icon="mdi:water-alert"></ha-icon><span><b>Fuite</b> — ${leak.join(" · ")}</span></div>`);
+      bar.innerHTML = `<div class="acol"><div class="at">⚠️ ${total} ALERTES — ${smoke.length ? "danger" : "fuite"}</div>${lines.join("")}</div>`;
+    }
   }
   disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); }
   _go(path) { if (!path) return; history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed")); }
