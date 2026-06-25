@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.72.0";
+const VERSION = "0.73.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4731,6 +4731,7 @@ class JmaSecurityCard extends HTMLElement {
   }
   _simulateAlert() {
     this._simUntil = Date.now() + 12000; this._updateBar();
+    try { window.dispatchEvent(new CustomEvent("jma-test-alert")); } catch (e) {}
     clearTimeout(this._simTimer); this._simTimer = setTimeout(() => { this._simUntil = 0; this._updateBar(); }, 12000);
   }
   _openSecList(p) {
@@ -4760,20 +4761,7 @@ class JmaSecurityCard extends HTMLElement {
       p.el.querySelector(".v").textContent = active ? (p.mode === "alert" ? "!" : n) : "✓";
     });
     if (sim) { const lp = (this._barPills || []).find((p) => p.mode === "alert"); if (lp) { lp.el.classList.remove("ok", "live", "warn"); lp.el.classList.add("alert"); lp.el.querySelector(".i").setAttribute("icon", lp.al); lp.el.querySelector(".v").textContent = "!"; } }
-    // bandeau d'alerte critique (fuite / fumée)
-    const banner = this.shadowRoot.getElementById("sbalert");
-    if (banner) {
-      const hits = [];
-      (this._critical || []).forEach((c) => c.list.forEach((e) => { const s = this._st(e); if (s && s.state === "on") hits.push({ label: c.label, icon: c.icon, name: this._nm(s, e) }); }));
-      if (sim) {
-        banner.hidden = false;
-        banner.innerHTML = `<ha-icon icon="mdi:water-alert"></ha-icon><div><div class="at">⚠️ FUITE D'EAU DÉTECTÉE</div><div class="as">🧪 Simulation de test (auto-arrêt 12 s)</div></div>`;
-      } else if (hits.length) {
-        const h = hits[0];
-        banner.hidden = false;
-        banner.innerHTML = `<ha-icon icon="${h.icon}"></ha-icon><div><div class="at">⚠️ ${h.label} DÉTECTÉE</div><div class="as">${hits.map((x) => x.name).join(" · ")}</div></div>`;
-      } else banner.hidden = true;
-    }
+    // le bandeau d'alerte est désormais global (dock de navigation), visible sur toutes les pages
   }
   _buildPanel() {
     const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
@@ -5172,10 +5160,20 @@ class JmaNavCard extends HTMLElement {
   setConfig(c) { this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; this._items = c.items || []; }
   getCardSize() { return 0; }
   static getStubConfig() { return { items: [{ name: "Accueil", icon: "mdi:home", path: "/jma-tablette/accueil" }] }; }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._highlight(); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._highlight(); this._checkAlert(); }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      @keyframes jma-flash{0%,100%{background:#ff3b30;}50%{background:#c1271f;}}
+      @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
+      .alertbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1002;
+        display:flex;align-items:center;gap:13px;max-width:calc(100vw - 20px);box-sizing:border-box;
+        background:#ff3b30;color:#fff;border-radius:17px;padding:14px 20px;cursor:pointer;
+        box-shadow:0 10px 34px rgba(255,59,48,.5);animation:jma-flash 1s infinite;}
+      .alertbar[hidden]{display:none;}
+      .alertbar ha-icon{--mdc-icon-size:30px;flex:none;animation:jma-pulse 1s infinite;}
+      .alertbar .at{font-weight:900;font-size:1.02rem;line-height:1.2;letter-spacing:.2px;}
+      .alertbar .as{font-size:.74rem;font-weight:600;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw;}
       .navdock{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1000;
         display:flex;gap:3px;padding:6px;border-radius:24px;
         background:rgba(250,247,240,.86);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);
@@ -5196,7 +5194,9 @@ class JmaNavCard extends HTMLElement {
         .navbtn ha-icon{--mdc-icon-size:23px;}
       }
       </style>
-      <ha-card style="background:none;border:none;box-shadow:none;"><div class="navdock" id="dock"></div></ha-card>`;
+      <ha-card style="background:none;border:none;box-shadow:none;">
+        <div class="alertbar" id="alertbar" hidden></div>
+        <div class="navdock" id="dock"></div></ha-card>`;
     const dock = this.shadowRoot.getElementById("dock");
     this._items.forEach((it) => {
       const b = document.createElement("button"); b.className = "navbtn"; b.dataset.path = it.path || "";
@@ -5204,11 +5204,33 @@ class JmaNavCard extends HTMLElement {
       b.addEventListener("click", () => this._go(it.path));
       dock.appendChild(b);
     });
+    this.shadowRoot.getElementById("alertbar").addEventListener("click", () => {
+      const sec = this._items.find((it) => /securit/i.test(it.path || "")); if (sec) this._go(sec.path);
+    });
     this._onLoc = () => this._highlight();
     window.addEventListener("location-changed", this._onLoc);
     window.addEventListener("popstate", this._onLoc);
+    this._onTest = () => { this._simUntil = Date.now() + 12000; this._checkAlert(); clearTimeout(this._simTimer); this._simTimer = setTimeout(() => { this._simUntil = 0; this._checkAlert(); }, 12000); };
+    window.addEventListener("jma-test-alert", this._onTest);
   }
-  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } }
+  _checkAlert() {
+    const bar = this.shadowRoot && this.shadowRoot.getElementById("alertbar"); if (!bar || !this._hass) return;
+    const sim = this._simUntil && Date.now() < this._simUntil;
+    const H = this._hass.states; const hits = [];
+    Object.keys(H).forEach((e) => {
+      if (!e.startsWith("binary_sensor.") || H[e].state !== "on") return;
+      const dc = H[e].attributes.device_class;
+      const nm = (H[e].attributes.friendly_name || e).replace(/\s+(Fumée|Humidité|Water leak|Smoke)$/i, "");
+      if (dc === "moisture") hits.push({ t: "FUITE D'EAU", ic: "mdi:water-alert", n: nm });
+      else if (["smoke", "gas", "carbon_monoxide"].includes(dc)) hits.push({ t: "FUMÉE / INCENDIE", ic: "mdi:smoke-detector-variant-alert", n: nm });
+    });
+    if (sim && !hits.length) hits.push({ t: "FUITE D'EAU", ic: "mdi:water-alert", n: "🧪 Simulation de test" });
+    if (hits.length) {
+      const h = hits[0]; bar.hidden = false;
+      bar.innerHTML = `<ha-icon icon="${h.ic}"></ha-icon><div><div class="at">⚠️ ${h.t} DÉTECTÉE</div><div class="as">${hits.map((x) => x.n).join(" · ")}</div></div>`;
+    } else bar.hidden = true;
+  }
+  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); }
   _go(path) { if (!path) return; history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed")); }
   _highlight() {
     const p = (window.location && window.location.pathname) || "";
