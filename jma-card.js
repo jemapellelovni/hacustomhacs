@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.69.0";
+const VERSION = "0.70.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1481,6 +1481,20 @@ class JmaPopup extends HTMLElement {
         .back.inline .sheet{max-width:none;width:100%;margin:0;max-height:none;box-shadow:none;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;border:none;border-radius:0;padding:2px;transform:none;opacity:1;overflow:visible;}
         .back.inline .grab,.back.inline .x{display:none;}
         .back.inline #body{overflow:visible;margin:0;padding:0;}
+        .slrow{display:flex;align-items:center;gap:11px;background:var(--p-surf);border:1px solid var(--p-line);border-radius:15px;padding:12px 14px;margin:8px 0;transition:border-color .3s,background .3s;}
+        .slrow .si{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--p-track);flex:none;}
+        .slrow .si ha-icon{--mdc-icon-size:19px;color:var(--p-text);}
+        .slrow.ok .si ha-icon{color:#34c759;}
+        .slrow .sn{flex:1;min-width:0;font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .slrow .sv{font-size:.7rem;font-weight:800;padding:4px 11px;border-radius:999px;background:var(--p-track);color:var(--p-mut);white-space:nowrap;}
+        .slrow.ok .sv{color:#2ba24a;}
+        .slrow.alert{border-color:#ff3b30;background:rgba(255,59,48,.12);}
+        .slrow.alert .si{background:#ff3b30;}.slrow.alert .si ha-icon{color:#fff;}.slrow.alert .sv{background:#ff3b30;color:#fff;}
+        .slrow.live{border-color:#6aa3ff;background:rgba(106,163,255,.12);}
+        .slrow.live .si{background:#6aa3ff;}.slrow.live .si ha-icon{color:#fff;}.slrow.live .sv{background:#6aa3ff;color:#fff;}
+        .slrow.warn{border-color:#ff9f0a;background:rgba(255,159,10,.12);}
+        .slrow.warn .si{background:#ff9f0a;}.slrow.warn .si ha-icon{color:#3a2400;}.slrow.warn .sv{background:#ff9f0a;color:#3a2400;}
+        .slempty{opacity:.5;text-align:center;padding:20px;font-size:.85rem;}
         .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
         @media(max-width:680px){.grid2{grid-template-columns:1fr;}}
         .grid2 .grow{margin:0;}
@@ -1763,6 +1777,14 @@ class JmaPopup extends HTMLElement {
       (this._graphs || []).forEach((g) => (g.hass = this._hass));
       return;
     }
+    if (this._kind() === "seclist") {
+      const n = (this._config.entities || []).length;
+      this.shadowRoot.getElementById("ht").textContent = this._config.title || "Capteurs";
+      this.shadowRoot.getElementById("hs").textContent = n + " capteur" + (n > 1 ? "s" : "");
+      this.shadowRoot.getElementById("hi").setAttribute("icon", this._config.icon || "mdi:shield-home");
+      if (this._seclistTick) this._seclistTick();
+      return;
+    }
     if (this._kind() === "security") {
       const al = this._config.alarm_entity && this._hass.states[this._config.alarm_entity];
       this.shadowRoot.getElementById("ht").textContent = this._config.name || "Sécurité";
@@ -1823,7 +1845,7 @@ class JmaPopup extends HTMLElement {
   }
   _renderBody() {
     const body = this.shadowRoot.getElementById("body");
-    body.innerHTML = ""; this._graphs = []; this._climTick = null; this._coversTick = null; this._climatesTick = null; this._securityTick = null; this._lightsTick = null;
+    body.innerHTML = ""; this._graphs = []; this._climTick = null; this._coversTick = null; this._climatesTick = null; this._securityTick = null; this._lightsTick = null; this._seclistTick = null;
     if (this._kind() === "ev") return this._evBody(body);
     if (this._kind() === "energy") return this._energyBody(body);
     if (this._kind() === "agenda") return this._agendaBody(body);
@@ -1833,6 +1855,7 @@ class JmaPopup extends HTMLElement {
     if (this._kind() === "climates") return this._climatesBody(body);
     if (this._kind() === "lights") return this._lightsBody(body);
     if (this._kind() === "security") return this._securityBody(body);
+    if (this._kind() === "seclist") return this._secListBody(body);
     const d = this._domain();
     if (d === "light") return this._lightBody(body);
     if (d === "climate") return this._climateBody(body);
@@ -2089,6 +2112,21 @@ class JmaPopup extends HTMLElement {
     if (code) data.code = code;
     this._call("alarm_control_panel", svc, data);
     this._code = ""; const cd = this.shadowRoot.getElementById("cd"); if (cd) cd.textContent = "----";
+  }
+  _secListBody(body) {
+    const list = this._config.entities || []; const mode = this._config.mode || "alert"; const icon = this._config.icon || "mdi:shield-home";
+    this._slRows = [];
+    if (!list.length) { const e = document.createElement("div"); e.className = "slempty"; e.textContent = "Aucun capteur"; body.appendChild(e); return; }
+    list.forEach((e) => { const s = this._hass.states[e]; if (!s) return;
+      const row = document.createElement("div"); row.className = "slrow";
+      row.innerHTML = `<div class="si"><ha-icon icon="${icon}"></ha-icon></div><div class="sn">${this._secNm(e)}</div><div class="sv"></div>`;
+      body.appendChild(row); this._slRows.push({ e, row }); });
+    const onTxt = { alert: "ALERTE", warn: "Ouvert", live: "Détecté" }[mode] || "Actif";
+    const offTxt = { alert: "OK", warn: "Fermé", live: "Calme" }[mode] || "OK";
+    this._seclistTick = () => { this._slRows.forEach(({ e, row }) => { const s = this._hass.states[e]; if (!s) return; const on = s.state === "on";
+      row.classList.remove("ok", "alert", "live", "warn"); row.classList.add(on ? mode : "ok");
+      row.querySelector(".sv").textContent = on ? onTxt : offTxt; }); };
+    this._seclistTick();
   }
   _secNm(e) {
     let n = (this._config.names && this._config.names[e]) || (this._hass.states[e] && this._hass.states[e].attributes.friendly_name) || e;
@@ -4649,14 +4687,22 @@ class JmaSecurityCard extends HTMLElement {
     modes.forEach(([svc, label, st, icon]) => { const b = document.createElement("button"); b.className = "sbab"; b.dataset.st = st; b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>${label}`; b.addEventListener("click", () => this._alarm(svc)); arm.appendChild(b); });
     const g = this._groups();
     this._barPills = [
-      { list: g.leak, ok: "mdi:water-check", al: "mdi:water-alert", mode: "alert" },
-      { list: g.smoke, ok: "mdi:smoke-detector-variant", al: "mdi:smoke-detector-variant-alert", mode: "alert" },
-      { list: g.door, ok: "mdi:door-closed", al: "mdi:door-open", mode: "warn" },
-      { list: g.motion, ok: "mdi:motion-sensor-off", al: "mdi:motion-sensor", mode: "live" },
-      { list: g.occupancy, ok: "mdi:account-off", al: "mdi:account-alert", mode: "live" },
+      { list: g.leak, ok: "mdi:water-check", al: "mdi:water-alert", mode: "alert", title: "Fuites d'eau", icon: "mdi:water" },
+      { list: g.smoke, ok: "mdi:smoke-detector-variant", al: "mdi:smoke-detector-variant-alert", mode: "alert", title: "Fumée / Incendie", icon: "mdi:smoke-detector-variant" },
+      { list: g.door, ok: "mdi:door-closed", al: "mdi:door-open", mode: "warn", title: "Ouvertures", icon: "mdi:door" },
+      { list: g.motion, ok: "mdi:motion-sensor-off", al: "mdi:motion-sensor", mode: "live", title: "Mouvement", icon: "mdi:motion-sensor" },
+      { list: g.occupancy, ok: "mdi:account-off", al: "mdi:account-alert", mode: "live", title: "Présence", icon: "mdi:account" },
     ].filter((p) => p.list.length);
     const ph = this.shadowRoot.getElementById("sbpills");
-    this._barPills.forEach((p) => { const el = document.createElement("div"); el.className = "sbp"; el.innerHTML = `<ha-icon class="i"></ha-icon><span class="v"></span>`; ph.appendChild(el); p.el = el; });
+    this._barPills.forEach((p) => { const el = document.createElement("div"); el.className = "sbp"; el.style.cursor = "pointer"; el.innerHTML = `<ha-icon class="i"></ha-icon><span class="v"></span>`;
+      el.addEventListener("click", () => this._openSecList(p)); ph.appendChild(el); p.el = el; });
+  }
+  _openSecList(p) {
+    if (this._popup) return; const c = this._config;
+    const pop = document.createElement("jma-card-popup");
+    pop.config = { kind: "seclist", title: p.title, icon: p.icon, entities: p.list, mode: p.mode, names: c.names, color: c.color, accent: c.accent, dark: c.dark, theme: c.theme };
+    pop.hass = this._hass; pop.addEventListener("jma-close", () => { this._popup = null; });
+    document.body.appendChild(pop); this._popup = pop;
   }
   _updateBar() {
     const al = this._st(this._config.alarm_entity);
