@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.78.0";
+const VERSION = "0.79.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5185,6 +5185,14 @@ class JmaNavCard extends HTMLElement {
       this._pnAlerts = map; this._renderAlerts();
     }).catch(() => {});
   }
+  _dismissAlerts() {
+    // acquittement : retire toutes les alertes affichées (live + persistantes) et coupe la simulation
+    window.__jmaAlertSim = 0;
+    const ids = new Set([...Object.keys(window.__jmaAlerts || {}), ...Object.keys(this._pnAlerts || {})]);
+    window.__jmaAlerts = {}; this._pnAlerts = {};
+    ids.forEach((id) => { try { this._hass.callService("persistent_notification", "dismiss", { notification_id: "jma_alert_" + id }); } catch (e) {} });
+    this._renderAlerts();
+  }
   _onAlertEvent(d) {
     const store = window.__jmaAlerts = window.__jmaAlerts || {};
     const id = d.id || "default";
@@ -5213,6 +5221,8 @@ class JmaNavCard extends HTMLElement {
       .alertbar .aline{display:flex;align-items:center;gap:8px;font-size:.86rem;font-weight:700;line-height:1.2;}
       .alertbar .aline ha-icon{--mdc-icon-size:19px;animation:none;}
       .alertbar .aline b{font-weight:900;}
+      .alertbar .axc{display:flex;align-items:center;opacity:.85;flex:none;}
+      .alertbar .axc ha-icon{--mdc-icon-size:26px;animation:none;}
       .navdock.alarm{background:#ff3b30;border-color:#ff3b30;box-shadow:0 12px 40px rgba(255,59,48,.6);}
       .navdock.alarm .navbtn{color:#fff;}
       .navdock.alarm .navbtn.on{background:rgba(255,255,255,.22);color:#fff;}
@@ -5248,9 +5258,7 @@ class JmaNavCard extends HTMLElement {
       b.addEventListener("click", () => this._go(it.path));
       dock.appendChild(b);
     });
-    this.shadowRoot.getElementById("alertbar").addEventListener("click", () => {
-      const sec = this._items.find((it) => /securit/i.test(it.path || "")); if (sec) this._go(sec.path);
-    });
+    this.shadowRoot.getElementById("alertbar").addEventListener("click", () => this._dismissAlerts());
     this._onLoc = () => this._highlight();
     window.addEventListener("location-changed", this._onLoc);
     window.addEventListener("popstate", this._onLoc);
@@ -5283,12 +5291,13 @@ class JmaNavCard extends HTMLElement {
     const critical = alerts.some((a) => a.level === "critical");
     bar.hidden = false; bar.className = "alertbar " + (alerts[0].level || "critical");
     if (dock) dock.classList.toggle("alarm", critical);
+    const xc = `<div class="axc"><ha-icon icon="mdi:close-circle"></ha-icon></div>`;
     if (alerts.length === 1) {
       const a = alerts[0];
-      bar.innerHTML = `<ha-icon icon="${this._alIcon(a)}"></ha-icon><div><div class="at">⚠️ ${a.title}</div>${a.message ? `<div class="as">📍 ${a.message}</div>` : ""}</div>`;
+      bar.innerHTML = `<ha-icon icon="${this._alIcon(a)}"></ha-icon><div style="flex:1;min-width:0;"><div class="at">⚠️ ${a.title}</div>${a.message ? `<div class="as">📍 ${a.message}</div>` : ""}</div>${xc}`;
     } else {
       const lines = alerts.map((a) => `<div class="aline"><ha-icon icon="${this._alIcon(a)}"></ha-icon><span><b>${a.title}</b>${a.message ? " — " + a.message : ""}</span></div>`).join("");
-      bar.innerHTML = `<div class="acol"><div class="at">⚠️ ${alerts.length} ALERTES</div>${lines}</div>`;
+      bar.innerHTML = `<div class="acol" style="flex:1;min-width:0;"><div class="at">⚠️ ${alerts.length} ALERTES</div>${lines}</div>${xc}`;
     }
   }
   disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); if (this._alertUnsub) { try { this._alertUnsub(); } catch (e) {} } if (this._pnUnsub) { try { this._pnUnsub(); } catch (e) {} } this._alertSub = false; }
