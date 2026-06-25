@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.79.0";
+const VERSION = "0.80.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4354,7 +4354,8 @@ class JmaNotifyCard extends HTMLElement {
         .nt{font-weight:700;font-size:.78rem;}
         .nm{font-size:.72rem;opacity:.72;white-space:normal;overflow:hidden;}
         .nx{margin-left:auto;border:none;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;cursor:pointer;
-          width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;}
+          width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;transition:background .2s;}
+        .nx.confirm{background:#ff3b30;animation:jma-pulse 1s infinite;}
         .empty{font-size:.74rem;opacity:.55;padding:2px;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
@@ -4388,6 +4389,7 @@ class JmaNotifyCard extends HTMLElement {
     const sub = this.shadowRoot.getElementById("sub");
     const cnt = this.shadowRoot.getElementById("cnt");
     list.innerHTML = "";
+    this.style.display = (this._config.hide_empty && !arr.length) ? "none" : "";
     cnt.classList.toggle("show", arr.length > 0);
     cnt.textContent = arr.length;
     sub.textContent = arr.length ? arr.length + " active" + (arr.length > 1 ? "s" : "") : "Aucune notification";
@@ -4399,11 +4401,20 @@ class JmaNotifyCard extends HTMLElement {
       const col = (TOAST_LEVELS[lvl] || {}).color || ROSE;
       const row = document.createElement("div"); row.className = "ntf";
       row.style.borderLeft = "3px solid " + col;
+      const danger = lvl === "critical" || (id && id.startsWith("jma_alert_"));
       row.innerHTML = `<div style="min-width:0;flex:1;"><div class="nt">${n.title || "Notification"}</div>` +
         `<div class="nm">${(n.message || "").toString().slice(0, 180)}</div></div>` +
         `<button class="nx" title="Rejeter"><ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon></button>`;
-      row.querySelector(".nx").addEventListener("click", () =>
-        this._hass.callService("persistent_notification", "dismiss", { notification_id: id }));
+      const nx = row.querySelector(".nx");
+      nx.addEventListener("click", (ev) => {
+        const b = ev.currentTarget;
+        if (danger && b.dataset.confirm !== "1") {
+          b.dataset.confirm = "1"; b.classList.add("confirm"); b.innerHTML = `<ha-icon icon="mdi:check-bold" style="--mdc-icon-size:16px;"></ha-icon>`; b.title = "Confirmer le retrait";
+          clearTimeout(b._ct); b._ct = setTimeout(() => { b.dataset.confirm = ""; b.classList.remove("confirm"); b.innerHTML = `<ha-icon icon="mdi:close" style="--mdc-icon-size:16px;"></ha-icon>`; b.title = "Rejeter"; }, 3500);
+          return;
+        }
+        this._hass.callService("persistent_notification", "dismiss", { notification_id: id });
+      });
       list.appendChild(row);
       if (id && !this._seen.has(id)) {
         this._seen.add(id);
@@ -5185,9 +5196,24 @@ class JmaNavCard extends HTMLElement {
       this._pnAlerts = map; this._renderAlerts();
     }).catch(() => {});
   }
+  _onBannerClick() {
+    const now = Date.now();
+    const merged = Object.assign({}, this._pnAlerts || {}, window.__jmaAlerts || {});
+    const alerts = Object.values(merged).filter((a) => !a.exp || a.exp > now);
+    const sim = window.__jmaAlertSim && now < window.__jmaAlertSim;
+    const hasCritical = sim || alerts.some((a) => a.level === "critical");
+    if (hasCritical && !this._confirmDismiss) {
+      // alerte DANGER : exige une 2e validation pour l'enlever (évite l'acquittement accidentel)
+      this._confirmDismiss = true; this._renderAlerts();
+      clearTimeout(this._confirmTimer); this._confirmTimer = setTimeout(() => { this._confirmDismiss = false; this._renderAlerts(); }, 4500);
+      return;
+    }
+    this._confirmDismiss = false; clearTimeout(this._confirmTimer);
+    this._dismissAlerts();
+  }
   _dismissAlerts() {
     // acquittement : retire toutes les alertes affichées (live + persistantes) et coupe la simulation
-    window.__jmaAlertSim = 0;
+    this._confirmDismiss = false; clearTimeout(this._confirmTimer); window.__jmaAlertSim = 0;
     const ids = new Set([...Object.keys(window.__jmaAlerts || {}), ...Object.keys(this._pnAlerts || {})]);
     window.__jmaAlerts = {}; this._pnAlerts = {};
     ids.forEach((id) => { try { this._hass.callService("persistent_notification", "dismiss", { notification_id: "jma_alert_" + id }); } catch (e) {} });
@@ -5223,6 +5249,8 @@ class JmaNavCard extends HTMLElement {
       .alertbar .aline b{font-weight:900;}
       .alertbar .axc{display:flex;align-items:center;opacity:.85;flex:none;}
       .alertbar .axc ha-icon{--mdc-icon-size:26px;animation:none;}
+      .alertbar .axc.confirm{opacity:1;gap:6px;background:#fff;color:#1a1a1a;border-radius:13px;padding:8px 13px;font-weight:900;font-size:.84rem;}
+      .alertbar .axc.confirm ha-icon{--mdc-icon-size:20px;color:#1a1a1a;}
       .navdock.alarm{background:#ff3b30;border-color:#ff3b30;box-shadow:0 12px 40px rgba(255,59,48,.6);}
       .navdock.alarm .navbtn{color:#fff;}
       .navdock.alarm .navbtn.on{background:rgba(255,255,255,.22);color:#fff;}
@@ -5258,7 +5286,7 @@ class JmaNavCard extends HTMLElement {
       b.addEventListener("click", () => this._go(it.path));
       dock.appendChild(b);
     });
-    this.shadowRoot.getElementById("alertbar").addEventListener("click", () => this._dismissAlerts());
+    this.shadowRoot.getElementById("alertbar").addEventListener("click", () => this._onBannerClick());
     this._onLoc = () => this._highlight();
     window.addEventListener("location-changed", this._onLoc);
     window.addEventListener("popstate", this._onLoc);
@@ -5291,7 +5319,9 @@ class JmaNavCard extends HTMLElement {
     const critical = alerts.some((a) => a.level === "critical");
     bar.hidden = false; bar.className = "alertbar " + (alerts[0].level || "critical");
     if (dock) dock.classList.toggle("alarm", critical);
-    const xc = `<div class="axc"><ha-icon icon="mdi:close-circle"></ha-icon></div>`;
+    const xc = this._confirmDismiss
+      ? `<div class="axc confirm"><ha-icon icon="mdi:check-bold"></ha-icon><span>Confirmer</span></div>`
+      : `<div class="axc"><ha-icon icon="mdi:close-circle"></ha-icon></div>`;
     if (alerts.length === 1) {
       const a = alerts[0];
       bar.innerHTML = `<ha-icon icon="${this._alIcon(a)}"></ha-icon><div style="flex:1;min-width:0;"><div class="at">⚠️ ${a.title}</div>${a.message ? `<div class="as">📍 ${a.message}</div>` : ""}</div>${xc}`;
