@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Génère un fichier HTML autonome (jma-card.js inliné) ouvrable d'un double-clic.
-# Icônes via la vraie police MDI chargée depuis un CDN (le navigateur de l'utilisateur y accède).
+# GALERIE : tous les états empilés, à faire défiler — AUCUN bouton à toucher
+# (robuste sur iPhone). Icônes via la vraie police MDI (CDN, accessible côté navigateur).
 import pathlib
 
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -15,36 +16,23 @@ HEAD = r"""<!doctype html>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
 <style>
   html,body{margin:0;padding:0;}
-  body{min-height:100vh;box-sizing:border-box;padding:90px 12px 120px;
+  body{min-height:100vh;box-sizing:border-box;padding:14px 12px 40px;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     background:linear-gradient(165deg,#f7f3ea 0%,#f1ebde 55%,#ece5d6 100%);}
   ha-card{display:block;}
   ha-icon{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;}
   ha-icon .mdi{font-size:var(--mdc-icon-size,24px);line-height:1;}
-  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:780px;margin:0 auto;}
+  .wrap{max-width:760px;margin:0 auto;}
+  h2{font:800 15px/1.2 sans-serif;color:#7a6a4c;margin:22px 4px 8px;display:flex;align-items:center;gap:8px;}
+  h2::before{content:"";width:18px;height:3px;border-radius:3px;background:#f8a5c2;}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
   .grid .full{grid-column:1/-1;}
-  /* barre de contrôle */
-  #ctl{position:fixed;top:0;left:0;right:0;z-index:2147483600;display:flex;flex-wrap:wrap;gap:8px;
-    align-items:center;padding:10px 14px;background:rgba(20,20,22,.92);backdrop-filter:blur(12px);color:#fff;}
-  #ctl b{font-size:13px;margin-right:6px;opacity:.85;}
-  #ctl button{border:0;border-radius:999px;padding:7px 13px;font-size:13px;font-weight:700;cursor:pointer;
-    background:#3a3a3e;color:#fff;}
-  #ctl button.on{background:#f8a5c2;color:#1a1a1a;}
-  #ctl .sep{width:1px;height:20px;background:rgba(255,255,255,.18);margin:0 4px;}
+  .sect{margin-bottom:6px;}
+  @media(max-width:560px){ .grid{grid-template-columns:1fr;} }
 </style>
 </head>
 <body>
-<div id="ctl">
-  <b>Alerte&nbsp;:</b>
-  <button data-lvl="none" class="on">Aucune</button>
-  <button data-lvl="info">Info</button>
-  <button data-lvl="warning">Avertissement</button>
-  <button data-lvl="critical">Critique</button>
-  <button data-lvl="multi">2 alertes</button>
-  <span class="sep"></span>
-  <button id="popbtn">Pop-up caméra</button>
-</div>
-<div class="grid" id="grid"></div>
+<div class="wrap" id="wrap"></div>
 
 <script>
 // ===================== jma-card.js (inliné) =====================
@@ -53,7 +41,6 @@ HEAD = r"""<!doctype html>
 TAIL = r"""
 // ===================== fin jma-card.js =====================
 
-// ---- stub ha-icon : utilise la vraie police MDI (CDN) ----
 customElements.define("ha-icon", class extends HTMLElement {
   static get observedAttributes(){ return ["icon"]; }
   connectedCallback(){ this._r(); }
@@ -77,7 +64,7 @@ const states = {
 };
 const hass = {
   states, language:"fr", themes:{ darkMode:false },
-  callService:(d,s,sd)=>{ console.log("callService",d,s,sd); return Promise.resolve(); },
+  callService:()=>Promise.resolve(),
   callWS:(msg)=>{
     if(msg && msg.type==="persistent_notification/get")
       return Promise.resolve([{ notification_id:"fenetre_cuisine", title:"Fenêtre ouverte",
@@ -88,45 +75,67 @@ const hass = {
     subscribeMessage:()=>Promise.resolve(()=>{}), sendMessagePromise:()=>Promise.resolve({}) },
   formatEntityState:(s)=>s.state, localize:()=>"",
 };
-function mk(tag, config, cls){
-  const el=document.createElement(tag); el.setConfig({ ...PALETTE, ...config }); el.hass=hass;
-  const w=document.createElement("div"); if(cls) w.className=cls; w.appendChild(el);
-  document.getElementById("grid").appendChild(w); return el;
+const NAV_ITEMS = [
+  { name:"Accueil", icon:"mdi:home", path:"/x/accueil" },
+  { name:"Climat", icon:"mdi:thermometer", path:"/x/climat" },
+  { name:"Agenda", icon:"mdi:calendar", path:"/x/agenda" },
+  { name:"Sécurité", icon:"mdi:shield-home", path:"/x/securite" },
+];
+const wrap = document.getElementById("wrap");
+function h2(txt){ const h=document.createElement("h2"); h.textContent=txt; wrap.appendChild(h); }
+function sect(){ const d=document.createElement("div"); d.className="sect"; wrap.appendChild(d); return d; }
+
+// bannière d'un niveau, rendue EN LIGNE (on sort le .alertbar du position:fixed)
+function banner(alerts){
+  const nav=document.createElement("jma-nav-card"); nav.setConfig({ ...PALETTE, items:NAV_ITEMS }); nav.hass=hass;
+  const host=sect(); host.appendChild(nav);          // connectedCallback démarre un timer de re-render
+  window.__jmaAlerts = JSON.parse(JSON.stringify(alerts)); nav._renderAlerts();
+  clearInterval(nav._alertTimer); nav._alertTimer=null;
+  nav._renderAlerts = function(){};  // FIGE : global partagé + _fetchNotifs async ne doivent plus re-rendre
+  const bar=nav.shadowRoot.getElementById("alertbar");
+  if(bar){ Object.assign(bar.style,{ position:"static", transform:"none", left:"auto", top:"auto",
+    width:"auto", maxWidth:"none" }); }
+  const dock=nav.shadowRoot.getElementById("dock"); if(dock) dock.style.display="none";
+  return nav;
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
   await customElements.whenDefined("jma-nav-card");
-  const nav = mk("jma-nav-card", { items:[
-    { name:"Accueil", icon:"mdi:home", path:"/x/accueil" },
-    { name:"Climat", icon:"mdi:thermometer", path:"/x/climat" },
-    { name:"Agenda", icon:"mdi:calendar", path:"/x/agenda" },
-    { name:"Sécurité", icon:"mdi:shield-home", path:"/x/securite" },
-  ] }, "full");
-  mk("jma-notify-card", { title:"Notifications", hide_empty:false }, "full");
-  mk("jma-climate-tile-card", { entity:"climate.salon" });
-  mk("jma-cover-tile-card", { entity:"cover.salon" });
-  mk("jma-climate-tile-card", { entity:"climate.chambre" });
 
-  const SETS = {
-    none: {},
-    info:    { w:{ level:"info",     title:"RAPPEL",          message:"Sortir les poubelles", icon:"" } },
-    warning: { w:{ level:"warning",  title:"FENÊTRE OUVERTE", message:"Cuisine — depuis 12 min", icon:"" } },
-    critical:{ w:{ level:"critical", title:"FUITE D'EAU",     message:"Machine à laver", icon:"mdi:water-alert" } },
-    multi:   { a:{ level:"critical", title:"FUMÉE",  message:"Séjour", icon:"mdi:fire-alert" },
-               b:{ level:"warning",  title:"PORTE",  message:"Garage ouvert depuis 20 min", icon:"" } },
-  };
-  function setLvl(lvl){
-    window.__jmaAlerts = JSON.parse(JSON.stringify(SETS[lvl] || {}));
-    nav._renderAlerts();
-    document.querySelectorAll("#ctl [data-lvl]").forEach(b=>b.classList.toggle("on", b.dataset.lvl===lvl));
-  }
-  document.querySelectorAll("#ctl [data-lvl]").forEach(b=> b.addEventListener("click", ()=>setLvl(b.dataset.lvl)));
-  document.getElementById("popbtn").addEventListener("click", ()=> nav._showPopup({
-    title:"👀 Quelqu'un à la porte", message:"Personne détectée à la sonnette.", level:"warning",
-    image:"https://picsum.photos/640/360", dismissable:true,
+  h2("Bannière — Information");
+  banner({ w:{ level:"info", title:"RAPPEL", message:"Sortir les poubelles ce soir", icon:"" } });
+
+  h2("Bannière — Avertissement (ambre/or)");
+  banner({ w:{ level:"warning", title:"FENÊTRE OUVERTE", message:"Cuisine — depuis 12 min", icon:"" } });
+
+  h2("Bannière — Critique (rouge)");
+  banner({ w:{ level:"critical", title:"FUITE D'EAU", message:"Machine à laver", icon:"mdi:water-alert" } });
+
+  h2("Bannière — Plusieurs alertes");
+  banner({ a:{ level:"critical", title:"FUMÉE", message:"Séjour", icon:"mdi:fire-alert" },
+           b:{ level:"warning", title:"PORTE", message:"Garage ouvert depuis 20 min", icon:"" } });
+
+  h2("Cartes");
+  const g=document.createElement("div"); g.className="grid"; sect().appendChild(g);
+  function add(tag,cfg,cls){ const el=document.createElement(tag); el.setConfig({ ...PALETTE, ...cfg }); el.hass=hass;
+    const w=document.createElement("div"); if(cls)w.className=cls; w.appendChild(el); g.appendChild(w); return el; }
+  add("jma-notify-card", { title:"Notifications", hide_empty:false }, "full");
+  add("jma-climate-tile-card", { entity:"climate.salon" });
+  add("jma-cover-tile-card", { entity:"cover.salon" });
+  add("jma-climate-tile-card", { entity:"climate.chambre" });
+
+  h2("Pop-up caméra (sonnette)");
+  const pn=document.createElement("jma-nav-card"); pn.setConfig({ ...PALETTE, items:NAV_ITEMS }); pn.hass=hass;
+  sect().appendChild(pn);
+  pn._showPopup({ title:"👀 Quelqu'un à la porte", message:"Personne détectée à la sonnette.",
+    level:"warning", image:"https://picsum.photos/640/360", dismissable:true,
     actions:[{ label:"Allumer l'entrée", icon:"mdi:lightbulb-on", primary:true, close:true },
-             { label:"Ignorer", icon:"mdi:close", close:true }] }));
-  setLvl("none");
+             { label:"Ignorer", icon:"mdi:close", close:true }] });
+  const jp=pn.shadowRoot.getElementById("jpop");
+  if(jp){ Object.assign(jp.style,{ position:"static", display:"flex", inset:"auto",
+    background:"transparent", backdropFilter:"none", padding:"0" }); }
+  const d2=pn.shadowRoot.getElementById("dock"); if(d2) d2.style.display="none";
+  const ab=pn.shadowRoot.getElementById("alertbar"); if(ab) ab.style.display="none";
 });
 </script>
 </body>
@@ -135,5 +144,4 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 out = root / "preview" / "jma-preview.html"
 out.write_text(HEAD + js + TAIL, encoding="utf-8")
-kb = out.stat().st_size / 1024
-print(f"écrit {out} ({kb:.0f} Ko)")
+print(f"écrit {out} ({out.stat().st_size/1024:.0f} Ko)")
