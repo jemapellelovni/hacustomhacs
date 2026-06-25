@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.77.0";
+const VERSION = "0.78.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5166,8 +5166,24 @@ class JmaNavCard extends HTMLElement {
       this._alertSub = true;
       window.__jmaAlerts = window.__jmaAlerts || {};
       try { h.connection.subscribeEvents((ev) => this._onAlertEvent((ev && ev.data) || {}), "jma_alert").then((u) => { this._alertUnsub = u; }); } catch (e) {}
+      // lit aussi les notifications persistantes jma_alert_* : toute vue JMA ouverte affiche les alertes actives, même si l'event live a été raté
+      this._pnAlerts = {}; this._fetchNotifs();
+      try { h.connection.subscribeEvents(() => this._fetchNotifs(), "persistent_notifications_updated").then((u) => { this._pnUnsub = u; }); } catch (e) {}
     }
     this._renderAlerts();
+  }
+  _fetchNotifs() {
+    if (!this._hass) return;
+    this._hass.callWS({ type: "persistent_notification/get" }).then((res) => {
+      const arr = Array.isArray(res) ? res : (res && typeof res === "object" ? Object.values(res) : []);
+      const map = {};
+      arr.forEach((n) => { const nid = (n && n.notification_id) || ""; if (!nid.startsWith("jma_alert_")) return;
+        const id = nid.slice(10);
+        const msg = (n.message || "").replace(/^📍\s*/, "").replace(/\s*—\s*\d{1,2}:\d{2}\s*$/, "");
+        map[id] = { level: "critical", title: n.title || "ALERTE", message: msg, icon: "" };
+      });
+      this._pnAlerts = map; this._renderAlerts();
+    }).catch(() => {});
   }
   _onAlertEvent(d) {
     const store = window.__jmaAlerts = window.__jmaAlerts || {};
@@ -5253,8 +5269,9 @@ class JmaNavCard extends HTMLElement {
   _renderAlerts() {
     const bar = this.shadowRoot && this.shadowRoot.getElementById("alertbar"); if (!bar) return;
     const dock = this.shadowRoot.getElementById("dock"); const now = Date.now();
-    const store = window.__jmaAlerts || {};
-    let alerts = Object.values(store).filter((a) => !a.exp || a.exp > now);
+    // fusion : notifications persistantes (fallback durable) + événements live (prioritaires, données complètes)
+    const merged = Object.assign({}, this._pnAlerts || {}, window.__jmaAlerts || {});
+    let alerts = Object.values(merged).filter((a) => !a.exp || a.exp > now);
     if (window.__jmaAlertSim && now < window.__jmaAlertSim) alerts = alerts.concat([
       { level: "critical", title: "FUMÉE / INCENDIE", message: "🧪 Séjour (simulation)", icon: "mdi:fire-alert" },
       { level: "critical", title: "FUMÉE / INCENDIE", message: "🧪 Chambre parents (simulation)", icon: "mdi:fire-alert" },
@@ -5274,7 +5291,7 @@ class JmaNavCard extends HTMLElement {
       bar.innerHTML = `<div class="acol"><div class="at">⚠️ ${alerts.length} ALERTES</div>${lines}</div>`;
     }
   }
-  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); if (this._alertUnsub) { try { this._alertUnsub(); } catch (e) {} this._alertSub = false; } }
+  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); if (this._alertUnsub) { try { this._alertUnsub(); } catch (e) {} } if (this._pnUnsub) { try { this._pnUnsub(); } catch (e) {} } this._alertSub = false; }
   _go(path) { if (!path) return; history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed")); }
   _highlight() {
     const p = (window.location && window.location.pathname) || "";
