@@ -15,11 +15,27 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.83.0";
+const VERSION = "0.84.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
 const jmaDef = (n, c) => { try { if (!customElements.get(n)) _def(n, c); } catch (e) {} };
+// Abonnement aux notifications persistantes. HA récent n'émet plus l'event de bus
+// "persistent_notifications_updated" ; il faut la collection WS persistent_notification/subscribe.
+// cb reçoit l'objet {type:"added"|"removed"|"current", notifications:{...}}. Repli sur
+// l'ancien event de bus pour les vieilles versions. Renvoie une promesse de fonction unsub.
+function jmaSubPN(conn, cb) {
+  if (!conn) return Promise.resolve(null);
+  try {
+    return conn.subscribeMessage((msg) => { try { cb(msg); } catch (e) {} },
+      { type: "persistent_notification/subscribe" });
+  } catch (e) {}
+  try {
+    return conn.subscribeEvents(() => { try { cb({ type: "legacy" }); } catch (e) {} },
+      "persistent_notifications_updated");
+  } catch (e) {}
+  return Promise.resolve(null);
+}
 const ROSE = "#f8a5c2";
 const BEIGE = "#DEC198";
 const BLUE = "#5b9bff";
@@ -4438,7 +4454,7 @@ class JmaNotifyCard extends HTMLElement {
     this._subbed = true;
     try {
       await this._fetch();
-      this._hass.connection.subscribeEvents(() => this._fetch(), "persistent_notifications_updated");
+      jmaSubPN(this._hass.connection, () => this._fetch());
     } catch (e) { /* websocket indispo */ }
   }
   async _fetch() {
@@ -4991,7 +5007,11 @@ class JmaScreensaverCard extends HTMLElement {
     try { this._hass.connection.subscribeEvents(wake, "jma_alert"); } catch (e) {}
     try { this._hass.connection.subscribeEvents(wake, "jma_popup"); } catch (e) {}
     if (this._config.wake_on_notify !== false) {
-      try { this._hass.connection.subscribeEvents(wake, "persistent_notifications_updated"); } catch (e) {}
+      // toute notification persistante AJOUTÉE réveille la veille (API WS de collection)
+      jmaSubPN(this._hass.connection, (msg) => {
+        if (!msg || msg.type === "removed" || msg.type === "current") return;
+        wake();
+      });
     }
   }
   connectedCallback() { this._arm(); }
@@ -5252,7 +5272,7 @@ class JmaNavCard extends HTMLElement {
       try { h.connection.subscribeEvents((ev) => this._onAlertEvent((ev && ev.data) || {}), "jma_alert").then((u) => { this._alertUnsub = u; }); } catch (e) {}
       // lit aussi les notifications persistantes jma_alert_* : toute vue JMA ouverte affiche les alertes actives, même si l'event live a été raté
       this._pnAlerts = {}; this._fetchNotifs();
-      try { h.connection.subscribeEvents(() => this._fetchNotifs(), "persistent_notifications_updated").then((u) => { this._pnUnsub = u; }); } catch (e) {}
+      try { jmaSubPN(h.connection, () => this._fetchNotifs()).then((u) => { this._pnUnsub = u; }); } catch (e) {}
       // pop-up riche (caméra + boutons d'action)
       try { h.connection.subscribeEvents((ev) => this._showPopup((ev && ev.data) || {}), "jma_popup").then((u) => { this._popupUnsub = u; }); } catch (e) {}
     }
