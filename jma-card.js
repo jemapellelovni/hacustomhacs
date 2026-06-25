@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.68.0";
+const VERSION = "0.69.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4521,6 +4521,7 @@ class JmaSecurityCard extends HTMLElement {
   }
   _popupFor(entity, kind) { if (this._popup || !entity) return; const p = document.createElement("jma-card-popup"); p.config = { entity, kind, color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme }; p.hass = this._hass; p.addEventListener("jma-close", () => { this._popup = null; }); document.body.appendChild(p); this._popup = p; }
   _build() {
+    if (this._config.bar) return this._buildBar();
     if (this._config.expanded) return this._buildPanel();
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
@@ -4565,6 +4566,7 @@ class JmaSecurityCard extends HTMLElement {
     this._cams.forEach((eid) => { const d = document.createElement("div"); d.className = "cam"; d.dataset.e = eid; d.innerHTML = `<img><div class="pers"><ha-icon icon="mdi:account"></ha-icon>Présence</div><span></span>`; d.addEventListener("click", (e) => { e.stopPropagation(); this._popupFor(eid); }); cams.appendChild(d); });
   }
   _update() {
+    if (this._config.bar) return this._updateBar();
     if (this._config.expanded) return this._updatePanel();
     const $ = (id) => this.shadowRoot.getElementById(id);
     const al = this._st(this._config.alarm_entity), badge = $("secbadge");
@@ -4609,6 +4611,72 @@ class JmaSecurityCard extends HTMLElement {
   }
   _nm(s, e) { let n = (this._config.names && this._config.names[e]) || (s && s.attributes.friendly_name) || e; return n.replace(/\s+(Fumée|Humidité|Porte|Mouvement|Contact externe.*|Alerte contact.*|Water leak|Smoke|Occupancy)$/i, "").trim(); }
   _alarm(svc) { const c = this._config; const data = { entity_id: c.alarm_entity }; if (c.code != null) data.code = String(c.code); this._hass.callService("alarm_control_panel", svc, data); }
+  _buildBar() {
+    const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      @keyframes jma-pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+      .secbar{display:flex;align-items:center;gap:13px;flex-wrap:wrap;padding:11px 14px;}
+      .sbstate{display:flex;align-items:center;gap:10px;flex:none;}
+      .sbbadge{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;transition:background .3s;}
+      .sbbadge ha-icon{--mdc-icon-size:25px;color:var(--jma-icon);}
+      .sbbadge.armed{background:linear-gradient(135deg,#34c759,#28a04a);}.sbbadge.armed ha-icon{color:#fff;}
+      .sbbadge.trig{background:#ff3b30;animation:jma-pulse 1s infinite;}.sbbadge.trig ha-icon{color:#fff;}
+      .sbst{font-weight:800;font-size:1.02rem;display:block;line-height:1.12;}
+      .sbsub{font-size:.7rem;opacity:.6;font-weight:600;}
+      .sbarm{display:flex;gap:6px;flex-wrap:wrap;}
+      .sbab{padding:9px 13px;border-radius:12px;border:1px solid var(--jma-surf3);background:transparent;color:var(--jma-text);font-weight:700;font-size:.76rem;cursor:pointer;display:flex;align-items:center;gap:5px;transition:transform .08s;}
+      .sbab:active{transform:scale(.95);}.sbab ha-icon{--mdc-icon-size:17px;}
+      .sbab.on{background:var(--jma-grad);border-color:transparent;color:var(--jma-dark);}
+      .sbpills{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto;}
+      .sbp{display:flex;align-items:center;gap:5px;padding:7px 11px;border-radius:999px;background:var(--jma-surf3);font-size:.74rem;font-weight:800;color:var(--jma-text);}
+      .sbp ha-icon{--mdc-icon-size:16px;color:var(--jma-icon);}
+      .sbp.ok{color:#2ba24a;}.sbp.ok ha-icon{color:#34c759;}
+      .sbp.alert{background:#ff3b30;color:#fff;animation:jma-pulse 1.1s infinite;}.sbp.alert ha-icon{color:#fff;}
+      .sbp.live{background:rgba(106,163,255,.2);color:#3d7fe0;}.sbp.live ha-icon{color:#6aa3ff;}
+      .sbp.warn{background:rgba(255,159,10,.2);color:#b87200;}.sbp.warn ha-icon{color:#ff9f0a;}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content"><div class="secbar">
+        <div class="sbstate"><div class="sbbadge" id="sbbadge"><ha-icon id="sbic" icon="mdi:shield-home"></ha-icon></div>
+          <div><b class="sbst" id="sbst">—</b><span class="sbsub" id="sbsub"></span></div></div>
+        <div class="sbarm" id="sbarm"></div>
+        <div class="sbpills" id="sbpills"></div>
+      </div></div></div></ha-card>`;
+    const arm = this.shadowRoot.getElementById("sbarm");
+    const modes = [["alarm_disarm", "Désarmer", "disarmed", "mdi:shield-off-outline"]];
+    if (feat & 2) modes.push(["alarm_arm_away", "Absent", "armed_away", "mdi:shield-lock"]);
+    if (feat & 1) modes.push(["alarm_arm_home", "Maison", "armed_home", "mdi:shield-home"]);
+    if (feat & 4) modes.push(["alarm_arm_night", "Nuit", "armed_night", "mdi:weather-night"]);
+    modes.forEach(([svc, label, st, icon]) => { const b = document.createElement("button"); b.className = "sbab"; b.dataset.st = st; b.innerHTML = `<ha-icon icon="${icon}"></ha-icon>${label}`; b.addEventListener("click", () => this._alarm(svc)); arm.appendChild(b); });
+    const g = this._groups();
+    this._barPills = [
+      { list: g.leak, ok: "mdi:water-check", al: "mdi:water-alert", mode: "alert" },
+      { list: g.smoke, ok: "mdi:smoke-detector-variant", al: "mdi:smoke-detector-variant-alert", mode: "alert" },
+      { list: g.door, ok: "mdi:door-closed", al: "mdi:door-open", mode: "warn" },
+      { list: g.motion, ok: "mdi:motion-sensor-off", al: "mdi:motion-sensor", mode: "live" },
+      { list: g.occupancy, ok: "mdi:account-off", al: "mdi:account-alert", mode: "live" },
+    ].filter((p) => p.list.length);
+    const ph = this.shadowRoot.getElementById("sbpills");
+    this._barPills.forEach((p) => { const el = document.createElement("div"); el.className = "sbp"; el.innerHTML = `<ha-icon class="i"></ha-icon><span class="v"></span>`; ph.appendChild(el); p.el = el; });
+  }
+  _updateBar() {
+    const al = this._st(this._config.alarm_entity);
+    if (al) {
+      const armed = ("" + al.state).startsWith("armed"), trig = al.state === "triggered";
+      this.shadowRoot.getElementById("sbst").textContent = ALARM_FR[al.state] || al.state;
+      this.shadowRoot.getElementById("sbsub").textContent = trig ? "⚠ Intrusion détectée" : armed ? "Système armé" : "Système désarmé";
+      this.shadowRoot.getElementById("sbic").setAttribute("icon", trig ? "mdi:shield-alert" : armed ? "mdi:shield-lock" : "mdi:shield-home-outline");
+      const bd = this.shadowRoot.getElementById("sbbadge"); bd.classList.toggle("armed", armed && !trig); bd.classList.toggle("trig", trig);
+      this.shadowRoot.querySelectorAll(".sbab").forEach((b) => b.classList.toggle("on", al.state === b.dataset.st));
+    }
+    (this._barPills || []).forEach((p) => {
+      const n = p.list.reduce((a, e) => a + (this._st(e) && this._st(e).state === "on" ? 1 : 0), 0);
+      const active = n > 0;
+      p.el.classList.remove("ok", "alert", "live", "warn");
+      p.el.classList.add(active ? p.mode : "ok");
+      p.el.querySelector(".i").setAttribute("icon", active ? p.al : p.ok);
+      p.el.querySelector(".v").textContent = active ? (p.mode === "alert" ? "!" : n) : "✓";
+    });
+  }
   _buildPanel() {
     const c = this._config; const al = this._st(c.alarm_entity); const feat = al ? (al.attributes.supported_features || 0) : 15;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
