@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.86.0";
+const VERSION = "0.87.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -3142,8 +3142,19 @@ class JmaSonosCard extends HTMLElement {
   getCardSize() { return 2; }
   static getStubConfig() { return { name: "Sonos", entities: ["media_player.salon"] }; }
   static getConfigElement() { return document.createElement("jma-card-editor"); }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); if (this._popup) this._popup.hass = h; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config);
+    if (this._config.expanded) { if (this._inline) this._inline.hass = h; return; }
+    this._update(); if (this._popup) this._popup.hass = h; }
   _call(s, data) { this._hass.callService("media_player", s, data); }
+  _buildInline() {
+    this.shadowRoot.innerHTML = `<style>:host{display:block;}</style><div id="host"></div>`;
+    const p = document.createElement("jma-card-popup");
+    p.config = { kind: "sonos", inline: true, speakers: this._spk, master: this._config.master,
+      names: this._config.names, name: this._config.name, favorites: this._config.favorites,
+      color: this._config.color, accent: this._config.accent, dark: this._config.dark, theme: this._config.theme };
+    p.hass = this._hass;
+    this.shadowRoot.getElementById("host").appendChild(p); this._inline = p;
+  }
   _master() {
     if (this._config.master && this._hass.states[this._config.master]) return this._config.master;
     let best = null, score = -1;
@@ -3157,6 +3168,7 @@ class JmaSonosCard extends HTMLElement {
   }
   _build() {
     const c = this._config;
+    if (c.expanded) return this._buildInline();
     this.shadowRoot.innerHTML =
       `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
         .transport{display:flex;gap:8px;align-items:center;flex:none;}
