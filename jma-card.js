@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.81.0";
+const VERSION = "0.82.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4323,9 +4323,9 @@ window.jmaToast = jmaToast;
 // devine le niveau d'importance d'une notif d'après son texte
 function jmaGuessLevel(text) {
   const s = (text || "").toLowerCase();
+  // 3 niveaux clairs : critical (rouge, grave) / warning (ambre, à surveiller) / success (vert) / info (bleu)
   if (/(danger|critique|urgent|fuite|incendie|fumée|intrusion|alarme|gaz|🚨|⚠)/.test(s)) return "critical";
-  if (/(alerte|batterie faible|ouvert|échec|erreur|attention|warning)/.test(s)) return "danger";
-  if (/(rappel|pense|bientôt|pluie|fenêtre)/.test(s)) return "warning";
+  if (/(alerte|alert|batterie faible|ouvert|échec|erreur|panne|attention|warning|rappel|pense|bientôt|pluie|fenêtre)/.test(s)) return "warning";
   if (/(ok|terminé|fini|succès|réussi|allumé)/.test(s)) return "success";
   return "info";
 }
@@ -4393,27 +4393,43 @@ class JmaNotifyCard extends HTMLElement {
       <div class="histpop" id="histpop"><div class="histsheet">
         <div class="histhead"><div class="ht">🕘 Historique des notifications</div><button class="histx" id="histx">✕</button></div>
         <div class="histlist" id="histlist"></div>
-        <button class="histclear" id="histclear">Vider l'historique</button>
+        <button class="histclear" id="histclear"><ha-icon icon="mdi:refresh" style="--mdc-icon-size:17px;vertical-align:-4px;margin-right:4px;"></ha-icon>Rafraîchir (48 h)</button>
       </div></div></ha-card>`;
     this.shadowRoot.getElementById("test").addEventListener("click", () =>
       jmaToast({ title: "Test", message: "Notification de test JMA 🔔", icon: "mdi:bell-ring", color: ROSE }));
     this.shadowRoot.getElementById("hist").addEventListener("click", () => this._openHist());
     this.shadowRoot.getElementById("histx").addEventListener("click", () => this.shadowRoot.getElementById("histpop").classList.remove("on"));
-    this.shadowRoot.getElementById("histclear").addEventListener("click", () => { try { localStorage.setItem("jma_notif_hist", "[]"); } catch (e) {} this._renderHist(); });
+    this.shadowRoot.getElementById("histclear").addEventListener("click", () => this._renderHist());
     this.shadowRoot.getElementById("histpop").addEventListener("click", (e) => { if (e.target.id === "histpop") e.currentTarget.classList.remove("on"); });
     this._built = true;
   }
-  _hist() { try { return JSON.parse(localStorage.getItem("jma_notif_hist") || "[]"); } catch (e) { return []; } }
-  _pushHist(n, lvl) { try { const h = this._hist(); h.unshift({ t: n.title || "Notification", m: (n.message || "").toString().slice(0, 220), lvl: lvl, ts: Date.now() }); if (h.length > 80) h.length = 80; localStorage.setItem("jma_notif_hist", JSON.stringify(h)); } catch (e) {} }
-  _openHist() { this._renderHist(); this.shadowRoot.getElementById("histpop").classList.add("on"); }
-  _renderHist() {
-    const host = this.shadowRoot.getElementById("histlist"); const h = this._hist();
-    if (!h.length) { host.innerHTML = `<div class="histempty">Aucun historique pour l'instant</div>`; return; }
-    host.innerHTML = h.map((x) => {
+  // historique côté serveur (logbook) → partagé entre tous les appareils
+  _pushHist(n, lvl) {
+    try { this._hass.callService("logbook", "log", { name: "📣 JMA", message: "[" + lvl + "] " + (n.title || "Notification") + ((n.message) ? " — " + (n.message || "").toString().replace(/\s+/g, " ").slice(0, 160) : "") }); } catch (e) {}
+  }
+  _openHist() { this.shadowRoot.getElementById("histpop").classList.add("on"); this._renderHist(); }
+  async _renderHist() {
+    const host = this.shadowRoot.getElementById("histlist");
+    host.innerHTML = `<div class="histempty">Chargement…</div>`;
+    let entries = [];
+    try {
+      const start = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+      const res = await this._hass.callWS({ type: "logbook/get_events", start_time: start });
+      (Array.isArray(res) ? res : []).forEach((e) => {
+        if (String(e.name || "") !== "📣 JMA") return;
+        const m = e.message || ""; const mm = m.match(/^\[(\w+)\]\s*(.*)$/);
+        entries.push({ lvl: mm ? mm[1] : "info", txt: mm ? mm[2] : m, ts: (e.when || 0) * 1000 });
+      });
+    } catch (e) {}
+    entries.sort((a, b) => b.ts - a.ts);
+    const seen = new Set(); entries = entries.filter((x) => { const k = x.txt + "|" + Math.round(x.ts / 60000); if (seen.has(k)) return false; seen.add(k); return true; });
+    if (!entries.length) { host.innerHTML = `<div class="histempty">Aucun historique (48 h)</div>`; return; }
+    host.innerHTML = entries.slice(0, 80).map((x) => {
       const col = (TOAST_LEVELS[x.lvl] || {}).color || ROSE;
-      const d = new Date(x.ts); const ago = jmaSince(x.ts ? d.toISOString() : null);
+      const d = new Date(x.ts);
       const when = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + " " + ("" + d.getHours()).padStart(2, "0") + ":" + ("" + d.getMinutes()).padStart(2, "0");
-      return `<div class="hrow"><div class="hbar" style="background:${col}"></div><div style="flex:1;min-width:0;"><div class="ht2">${x.t}</div><div class="hm">${x.m}</div></div><div class="htime">${when}</div></div>`;
+      const parts = x.txt.split(" — "); const t = parts[0]; const m = parts.slice(1).join(" — ");
+      return `<div class="hrow"><div class="hbar" style="background:${col}"></div><div style="flex:1;min-width:0;"><div class="ht2">${t}</div>${m ? `<div class="hm">${m}</div>` : ""}</div><div class="htime">${when}</div></div>`;
     }).join("");
   }
   async _subscribe() {
@@ -4966,9 +4982,13 @@ class JmaScreensaverCard extends HTMLElement {
   _subscribeWake() {
     this._wakeSub = true;
     // une notification (persistante) ou l'event jma_screensaver_wake ferme la veille
-    try { this._hass.connection.subscribeEvents(() => { if (this._shown) this._hide(); }, "jma_screensaver_wake"); } catch (e) {}
+    const wake = () => { if (this._shown) this._hide(); };
+    try { this._hass.connection.subscribeEvents(wake, "jma_screensaver_wake"); } catch (e) {}
+    // une alerte ou un pop-up JMA réveille aussi la veille
+    try { this._hass.connection.subscribeEvents(wake, "jma_alert"); } catch (e) {}
+    try { this._hass.connection.subscribeEvents(wake, "jma_popup"); } catch (e) {}
     if (this._config.wake_on_notify !== false) {
-      try { this._hass.connection.subscribeEvents(() => { if (this._shown) this._hide(); }, "persistent_notifications_updated"); } catch (e) {}
+      try { this._hass.connection.subscribeEvents(wake, "persistent_notifications_updated"); } catch (e) {}
     }
   }
   connectedCallback() { this._arm(); }
@@ -5230,6 +5250,8 @@ class JmaNavCard extends HTMLElement {
       // lit aussi les notifications persistantes jma_alert_* : toute vue JMA ouverte affiche les alertes actives, même si l'event live a été raté
       this._pnAlerts = {}; this._fetchNotifs();
       try { h.connection.subscribeEvents(() => this._fetchNotifs(), "persistent_notifications_updated").then((u) => { this._pnUnsub = u; }); } catch (e) {}
+      // pop-up riche (caméra + boutons d'action)
+      try { h.connection.subscribeEvents((ev) => this._showPopup((ev && ev.data) || {}), "jma_popup").then((u) => { this._popupUnsub = u; }); } catch (e) {}
     }
     this._renderAlerts();
   }
@@ -5275,6 +5297,55 @@ class JmaNavCard extends HTMLElement {
     if (d.clear || d.action === "clear") delete store[id];
     else store[id] = { level: d.level || "critical", title: d.title || "ALERTE", message: d.message || "", icon: d.icon || "", exp: d.duration ? Date.now() + (+d.duration) * 1000 : 0 };
     this._renderAlerts();
+  }
+  _showPopup(d) {
+    if (!d || (!d.title && !d.message && !d.camera)) return;
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const ACC = { critical: "#ff1744", warning: "#ffb300", info: "#40c4ff", success: "#69f0ae" }[d.level] || this._config.color || "#e98aa8";
+    const ICN = d.icon || { critical: "mdi:alert", warning: "mdi:alert-outline", info: "mdi:information", success: "mdi:check-circle" }[d.level] || "mdi:bell-ring";
+    const sheet = this.shadowRoot.querySelector(".jpsheet"); sheet.style.setProperty("--jp-accent", ACC);
+    $("jpicon").setAttribute("icon", ICN);
+    $("jptitle").textContent = d.title || "Notification";
+    $("jpmsg").textContent = d.message || ""; $("jpmsg").style.display = d.message ? "" : "none";
+    this._popDismissable = d.dismissable !== false;
+    $("jpx").style.display = this._popDismissable ? "" : "none";
+    // caméra (live snapshot rafraîchi) ou image fixe
+    const cam = $("jpcam"); clearInterval(this._popCamTimer); this._popCam = d.camera || null;
+    if (d.camera || d.image) {
+      cam.hidden = false;
+      const paint = () => {
+        let src = d.image || null;
+        if (d.camera && this._hass.states[d.camera]) { const p = this._hass.states[d.camera].attributes.entity_picture; if (p) src = p + (p.includes("?") ? "&" : "?") + "_=" + Math.floor(Date.now() / 2000); }
+        if (src) cam.src = src;
+      };
+      paint(); if (d.camera) this._popCamTimer = setInterval(paint, 2000);
+    } else cam.hidden = true;
+    // boutons d'action
+    const acts = $("jpacts"); acts.innerHTML = "";
+    let actions = d.actions || [];
+    if (typeof actions === "string") { try { actions = JSON.parse(actions); } catch (e) { actions = []; } }
+    (Array.isArray(actions) ? actions : []).forEach((a) => {
+      const b = document.createElement("button"); b.className = "jpb" + (a.primary ? " primary" : "");
+      b.innerHTML = (a.icon ? `<ha-icon icon="${a.icon}"></ha-icon>` : "") + (a.label || "OK");
+      b.addEventListener("click", () => {
+        if (a.action) { const p = String(a.action).split("."); try { this._hass.callService(p[0], p.slice(1).join("."), a.data || {}); } catch (e) {} }
+        if (window.jmaToast && a.label) jmaToast({ title: d.title || "Action", message: "✓ " + a.label, color: ACC });
+        if (a.close !== false) this._closePopup();
+      });
+      acts.appendChild(b);
+    });
+    // bouton fermer par défaut si aucune action
+    if (!acts.children.length && this._popDismissable) {
+      const b = document.createElement("button"); b.className = "jpb primary"; b.textContent = "OK";
+      b.addEventListener("click", () => this._closePopup()); acts.appendChild(b);
+    }
+    $("jpop").classList.add("on");
+    clearTimeout(this._popTimer);
+    if (d.timeout) this._popTimer = setTimeout(() => this._closePopup(), (+d.timeout) * 1000);
+  }
+  _closePopup() {
+    const p = this.shadowRoot && this.shadowRoot.getElementById("jpop"); if (p) p.classList.remove("on");
+    clearInterval(this._popCamTimer); clearTimeout(this._popTimer);
   }
   _build() {
     const c = this._config;
@@ -5324,8 +5395,30 @@ class JmaNavCard extends HTMLElement {
         .navbtn span{display:none;}
         .navbtn ha-icon{--mdc-icon-size:23px;}
       }
+      :host{--jp-sheet:#fbf8f1;--jp-text:#2a2418;}
+      :host(.dark){--jp-sheet:#1d1d20;--jp-text:#fff;}
+      .jpop{position:fixed;inset:0;z-index:2147483200;background:rgba(15,12,8,.55);display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:14px;box-sizing:border-box;}
+      .jpop.on{display:flex;}
+      .jpsheet{background:var(--jp-sheet);color:var(--jp-text);border-radius:22px;width:100%;max-width:470px;max-height:90vh;overflow:auto;box-shadow:0 26px 74px rgba(0,0,0,.55);border-top:5px solid var(--jp-accent,#e98aa8);}
+      .jph{display:flex;align-items:center;gap:11px;padding:16px 18px 8px;}
+      .jpic{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:var(--jp-accent,#e98aa8);flex:none;}
+      .jpic ha-icon{--mdc-icon-size:25px;color:#fff;}
+      .jpt{font-weight:800;font-size:1.1rem;flex:1;min-width:0;line-height:1.2;}
+      .jpx{width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;background:rgba(127,127,127,.18);color:inherit;font-size:1rem;flex:none;}
+      .jpcam{width:calc(100% - 36px);margin:6px 18px 0;border-radius:14px;display:block;background:#000;aspect-ratio:16/9;object-fit:cover;}
+      .jpm{padding:10px 18px 2px;font-size:.92rem;line-height:1.45;opacity:.86;white-space:pre-line;}
+      .jpacts{display:flex;flex-wrap:wrap;gap:8px;padding:14px 18px 18px;}
+      .jpb{flex:1;min-width:130px;padding:14px;border:none;border-radius:14px;cursor:pointer;font-weight:800;font-size:.9rem;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--jma-surf3);color:var(--jp-text);transition:transform .08s;}
+      .jpb:active{transform:scale(.96);}.jpb ha-icon{--mdc-icon-size:20px;}
+      .jpb.primary{background:var(--jp-accent,#e98aa8);color:#fff;}
       </style>
       <ha-card style="background:none;border:none;box-shadow:none;">
+        <div class="jpop" id="jpop"><div class="jpsheet">
+          <div class="jph"><div class="jpic"><ha-icon id="jpicon" icon="mdi:bell-ring"></ha-icon></div><div class="jpt" id="jptitle"></div><button class="jpx" id="jpx">✕</button></div>
+          <img class="jpcam" id="jpcam" hidden>
+          <div class="jpm" id="jpmsg"></div>
+          <div class="jpacts" id="jpacts"></div>
+        </div></div>
         <div class="alertbar" id="alertbar" hidden></div>
         <div class="navdock" id="dock"></div></ha-card>`;
     const dock = this.shadowRoot.getElementById("dock");
@@ -5337,6 +5430,8 @@ class JmaNavCard extends HTMLElement {
       dock.appendChild(b);
     });
     this.shadowRoot.getElementById("alertbar").addEventListener("click", () => this._onBannerClick());
+    this.shadowRoot.getElementById("jpx").addEventListener("click", () => this._closePopup());
+    this.shadowRoot.getElementById("jpop").addEventListener("click", (e) => { if (e.target.id === "jpop" && this._popDismissable !== false) this._closePopup(); });
     this._onLoc = () => this._highlight();
     window.addEventListener("location-changed", this._onLoc);
     window.addEventListener("popstate", this._onLoc);
@@ -5380,7 +5475,7 @@ class JmaNavCard extends HTMLElement {
       bar.innerHTML = `<div class="acol" style="flex:1;min-width:0;"><div class="at">⚠️ ${alerts.length} ALERTES</div>${lines}</div>${xc}`;
     }
   }
-  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); if (this._alertUnsub) { try { this._alertUnsub(); } catch (e) {} } if (this._pnUnsub) { try { this._pnUnsub(); } catch (e) {} } this._alertSub = false; }
+  disconnectedCallback() { if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); } if (this._onTest) window.removeEventListener("jma-test-alert", this._onTest); if (this._alertTimer) clearInterval(this._alertTimer); if (this._alertUnsub) { try { this._alertUnsub(); } catch (e) {} } if (this._pnUnsub) { try { this._pnUnsub(); } catch (e) {} } if (this._popupUnsub) { try { this._popupUnsub(); } catch (e) {} } clearInterval(this._popCamTimer); this._alertSub = false; }
   _go(path) { if (!path) return; history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed")); }
   _highlight() {
     const p = (window.location && window.location.pathname) || "";
