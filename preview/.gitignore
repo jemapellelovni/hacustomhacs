@@ -1,2 +1,5 @@
-# screenshots de preview (artefacts régénérables)
+# artefacts régénérables
 preview-*.png
+standalone-check.png
+verify.mjs
+jma-preview.html
