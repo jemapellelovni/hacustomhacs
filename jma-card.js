@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.65.0";
+const VERSION = "0.66.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1024,6 +1024,89 @@ class JmaClimateTileCard extends HTMLElement {
   }
 }
 jmaDef("jma-climate-tile-card", JmaClimateTileCard);
+// Volet INLINE (style thermostat) : position XL + slider + ▲■▼ + raccourcis %
+class JmaCoverTileCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; this._R = { pend: null, timer: null, hold: null }; this._drag = false; }
+  setConfig(c) { if (!c.entity) throw new Error("volet : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, presets: [10, 20, 50, 75], ...c }; }
+  getCardSize() { return 2; }
+  static getStubConfig() { return { entity: "cover.example" }; }
+  static getConfigElement() { return document.createElement("jma-card-editor"); }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
+  get _s() { return this._hass.states[this._config.entity]; }
+  _supportsPos() { const s = this._s; return s && (s.attributes.current_position != null || ((s.attributes.supported_features || 0) & 4)); }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      .vt{display:flex;flex-direction:column;gap:11px;position:relative;overflow:hidden;}
+      .vt::before{content:"";position:absolute;left:-13px;top:-13px;bottom:-13px;width:4px;background:transparent;transition:background .3s;}
+      .vt.on::before{background:var(--jma-grad);}
+      .vthead{display:flex;align-items:center;gap:9px;}
+      .vticon{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--jma-surf3);flex:none;transition:background .3s;}
+      .vticon ha-icon{--mdc-icon-size:20px;color:var(--jma-icon);transition:color .3s;}
+      .vt.on .vticon{background:var(--jma-grad);}.vt.on .vticon ha-icon{color:var(--jma-dark);}
+      .vtname{font-weight:700;font-size:.96rem;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .vtact{font-size:.62rem;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--jma-surf3);color:var(--jma-icon);white-space:nowrap;}
+      .vt.on .vtact{background:rgba(248,165,194,.22);color:var(--jma-rose);}
+      .vtval{font-weight:800;font-size:2.4rem;text-align:center;letter-spacing:-1.5px;line-height:1;transition:color .2s;font-variant-numeric:tabular-nums;}
+      .vt.editing .vtval{color:var(--jma-rose);}
+      .vttrack{position:relative;height:18px;border-radius:11px;background:var(--jma-surf3);cursor:pointer;margin:0 3px;touch-action:none;}
+      .vtfill{position:absolute;left:0;top:0;bottom:0;border-radius:11px;background:var(--jma-grad);transition:width .12s;}
+      .vtthumb{position:absolute;top:50%;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 9px rgba(0,0,0,.32);transform:translate(-50%,-50%);pointer-events:none;transition:left .12s;border:3px solid var(--jma-rose);}
+      .vtbtns{display:flex;gap:8px;}
+      .vtbtn{flex:1;height:42px;border-radius:13px;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+      .vtbtn:active{transform:scale(.92);}.vtbtn ha-icon{--mdc-icon-size:23px;}
+      .vtpre{display:flex;gap:6px;}
+      .vtpc{flex:1;height:28px;border-radius:9px;border:none;cursor:pointer;background:var(--jma-surf2);color:var(--jma-text);font-size:.72rem;font-weight:800;transition:transform .08s,background .15s;font-variant-numeric:tabular-nums;}
+      .vtpc:active{transform:scale(.92);background:var(--jma-grad);color:var(--jma-dark);}
+      </style>
+      <ha-card style="background:none;border:none;box-shadow:none;"><div class="tile flat"><div class="content">
+        <div class="vt" id="vt">
+          <div class="vthead"><div class="vticon"><ha-icon class="vti" icon="mdi:window-shutter"></ha-icon></div>
+            <div class="vtname"></div><div class="vtact">—</div></div>
+          <div class="vtval" id="val">—</div>
+          <div class="vttrack" id="track"><div class="vtfill" id="fill"></div><div class="vtthumb" id="thumb"></div></div>
+          <div class="vtpre" id="pre"></div>
+          <div class="vtbtns">
+            <button class="vtbtn" data-a="open_cover" aria-label="Ouvrir"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
+            <button class="vtbtn" data-a="stop_cover" aria-label="Stop"><ha-icon icon="mdi:stop"></ha-icon></button>
+            <button class="vtbtn" data-a="close_cover" aria-label="Fermer"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
+          </div>
+        </div>
+      </div></div></ha-card>`;
+    this.shadowRoot.querySelectorAll(".vtbtn").forEach((b) => b.addEventListener("click", () => this._hass.callService("cover", b.dataset.a, { entity_id: this._config.entity })));
+    const pre = this.shadowRoot.getElementById("pre");
+    (this._config.presets || []).forEach((p) => { const b = document.createElement("button"); b.className = "vtpc"; b.textContent = p + "%";
+      b.addEventListener("click", () => this._setPos(p, true)); pre.appendChild(b); });
+    const track = this.shadowRoot.getElementById("track");
+    const fromX = (e) => { const r = track.getBoundingClientRect(); return Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100))); };
+    track.addEventListener("pointerdown", (e) => { if (!this._supportsPos()) return; e.stopPropagation(); this._drag = true; try { track.setPointerCapture(e.pointerId); } catch (_) {} this._setPos(fromX(e), false); });
+    track.addEventListener("pointermove", (e) => { if (this._drag) this._setPos(fromX(e), false); });
+    const end = (e) => { if (!this._drag) return; this._drag = false; this._setPos(fromX(e), true); };
+    track.addEventListener("pointerup", end); track.addEventListener("pointercancel", end);
+  }
+  _paint(p) { this.shadowRoot.getElementById("val").textContent = p + "%"; this.shadowRoot.getElementById("fill").style.width = p + "%"; this.shadowRoot.getElementById("thumb").style.left = p + "%"; }
+  _setPos(p, commit) {
+    const R = this._R; R.pend = p; const vt = this.shadowRoot.getElementById("vt"); vt.classList.add("editing"); this._paint(p);
+    clearTimeout(R.timer);
+    R.timer = setTimeout(() => { this._hass.callService("cover", "set_cover_position", { entity_id: this._config.entity, position: R.pend });
+      clearTimeout(R.hold); R.hold = setTimeout(() => { R.pend = null; vt.classList.remove("editing"); }, 3000); }, commit ? 0 : 350);
+  }
+  _update() {
+    const s = this._s; if (!s) return; const a = s.attributes; const vt = this.shadowRoot.getElementById("vt");
+    this.shadowRoot.querySelector(".vtname").textContent = this._config.name || a.friendly_name || this._config.entity;
+    const pos = a.current_position;
+    const open = s.state === "open" || (pos || 0) > 0;
+    const hasPos = this._supportsPos();
+    this.shadowRoot.getElementById("track").style.display = hasPos ? "block" : "none";
+    this.shadowRoot.getElementById("pre").style.display = hasPos ? "flex" : "none";
+    this.shadowRoot.getElementById("val").style.display = hasPos ? "block" : "none";
+    if (hasPos && this._R.pend == null && !this._drag && pos != null) this._paint(pos);
+    this.shadowRoot.querySelector(".vtact").textContent = pos != null ? (pos === 0 ? "Fermé" : pos === 100 ? "Ouvert" : pos + "% ouvert") : (open ? "Ouvert" : s.state === "closed" ? "Fermé" : s.state);
+    vt.classList.toggle("on", open);
+    this.shadowRoot.querySelector(".vti").setAttribute("icon", open ? "mdi:window-shutter-open" : "mdi:window-shutter");
+  }
+}
+jmaDef("jma-cover-tile-card", JmaCoverTileCard);
 
 // =============================================================================
 //  🎯 THERMOSTAT CADRAN (façon Nest) — anneau circulaire, glisser pour régler
@@ -5033,6 +5116,7 @@ REG("jma-switch-card", "JMA Interrupteur", "Interrupteur : pastille on/off iOS."
 REG("jma-cover-card", "JMA Volet", "Volet : Ouvrir / Stop / Fermer + position.");
 REG("jma-thermostat-card", "JMA Thermostat", "Climat : consigne ± + modes.");
 REG("jma-climate-tile-card", "JMA Thermostat tuile", "Climat inline (sans pop-up) : consigne XL + modes + temp réelle.");
+REG("jma-cover-tile-card", "JMA Volet tuile", "Volet inline (style thermostat) : position XL + slider + raccourcis %.");
 REG("jma-climate-dial-card", "JMA Thermostat cadran", "Climat : cadran rond, glisser pour régler.");
 REG("jma-media-card", "JMA Média", "Lecteur média : transport + volume.");
 REG("jma-vacuum-card", "JMA Aspirateur", "Aspirateur : Start / Pause / Dock.");
