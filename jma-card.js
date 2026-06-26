@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.89.0";
+const VERSION = "0.90.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5695,6 +5695,70 @@ class JmaLightsCard extends JmaGroupCard {
 jmaDef("jma-lights-card", JmaLightsCard);
 
 // =============================================================================
+//  ⚽ MATCH (Team Tracker) — score géant + statut live
+// =============================================================================
+class JmaMatchCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { if (!c.entity) throw new Error("match : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; }
+  getCardSize() { return 8; }
+  static getStubConfig() { return { entity: "sensor.wc_france" }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update();
+    if (!this._tick) this._tick = setInterval(() => this._update(), 4000); }
+  disconnectedCallback() { clearInterval(this._tick); this._tick = null; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
+      @keyframes m-blink{0%,100%{opacity:1}50%{opacity:.25}}
+      .mw{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vh;
+        min-height:78vh;text-align:center;padding:3vh 2vw;box-sizing:border-box;}
+      .mcomp{font-size:1.8vw;font-weight:800;letter-spacing:.25vw;text-transform:uppercase;color:var(--jma-icon);opacity:.7;}
+      .mrow{display:flex;align-items:center;justify-content:center;gap:4vw;width:100%;}
+      .mteam{display:flex;flex-direction:column;align-items:center;gap:1.4vh;width:24vw;min-width:0;}
+      .mteam img{height:13vw;width:13vw;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.25));}
+      .mab{font-size:3.4vw;font-weight:900;letter-spacing:.1vw;line-height:1;}
+      .mnm{font-size:1.5vw;opacity:.55;font-weight:700;}
+      .mscore{display:flex;align-items:center;gap:2.2vw;font-weight:200;line-height:.82;}
+      .mscore b{font-size:20vw;font-weight:200;font-variant-numeric:tabular-nums;}
+      .mdash{font-size:9vw;opacity:.2;}
+      .mstatus{font-size:2.6vw;font-weight:900;letter-spacing:.1vw;padding:1vh 3vw;border-radius:99px;
+        background:var(--jma-surf2);color:var(--jma-text);}
+      .mstatus.live{background:rgba(54,224,127,.16);color:#1f9d57;}
+      .mstatus.live::before{content:"\\25CF  ";animation:m-blink 1s infinite;}
+      .msub{font-size:1.5vw;opacity:.45;font-weight:600;}
+      .mempty{font-size:2.4vw;opacity:.5;font-weight:800;padding:30vh 0;}
+    </style>` + CARD_WRAP_OPEN + `<div id="root"></div></ha-card>`;
+  }
+  _update() {
+    const s = this._hass && this._hass.states[this._config.entity];
+    const root = this.shadowRoot.getElementById("root"); if (!root) return;
+    if (!s || ["NOT_FOUND", "BYE", "", "unavailable", "unknown"].includes(s.state)) {
+      root.innerHTML = `<div class="mempty">⚽ Aucun match programmé</div>`; return;
+    }
+    const a = s.attributes, st = s.state;
+    const live = st === "IN", half = st === "HALF", pre = st === "PRE", post = st === "POST";
+    let ko = "";
+    try { ko = a.date ? new Date(a.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""; } catch (e) {}
+    const status = pre ? ("Coup d'envoi" + (ko ? " · " + ko : (a.kickoff_in ? " · " + a.kickoff_in : "")))
+      : half ? "MI-TEMPS" : post ? "TERMINÉ"
+      : live ? ("EN DIRECT" + (a.clock ? " · " + a.clock : "")) : st;
+    const logo = (u) => u ? `<img src="${u}" onerror="this.style.display='none'">` : "";
+    const team = (lg, ab, nm) => `<div class="mteam">${logo(lg)}<div class="mab">${ab || ""}</div>${nm ? `<div class="mnm">${nm}</div>` : ""}</div>`;
+    root.innerHTML =
+      `<div class="mw">` +
+        `<div class="mcomp">${a.league_name || a.league || "Match"}</div>` +
+        `<div class="mrow">` +
+          team(a.team_logo, a.team_abbr, a.team_name) +
+          `<div class="mscore"><b>${a.team_score != null ? a.team_score : "0"}</b><span class="mdash">–</span><b>${a.opponent_score != null ? a.opponent_score : "0"}</b></div>` +
+          team(a.opponent_logo, a.opponent_abbr, a.opponent_name) +
+        `</div>` +
+        `<div class="mstatus ${live ? "live" : ""}">${status}</div>` +
+        (a.venue ? `<div class="msub">${a.venue}</div>` : "") +
+      `</div>`;
+  }
+}
+jmaDef("jma-match-card", JmaMatchCard);
+
+// =============================================================================
 window.customCards = window.customCards || [];
 const REG = (type, name, description) => window.customCards.push({ type, name, description, preview: true });
 REG("jma-card", "JMA Card (auto)", "Carte universelle flat/iOS : slider horizontal + pop-up.");
@@ -5723,6 +5787,7 @@ REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
 REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
 REG("jma-sonos-card", "JMA Sonos", "Multi-room : groupes + volume par pièce.");
+REG("jma-match-card", "JMA Match", "Score géant + statut live (Team Tracker).");
 REG("jma-saint-card", "JMA Saint du jour", "Saint du jour (calendrier français).");
 REG("jma-energy-today-card", "JMA Énergie du jour", "Bilan kWh du jour + coût € EDF.");
 REG("jma-favorites-card", "JMA Favoris", "Grille de raccourcis (scènes, services, navigation).");
