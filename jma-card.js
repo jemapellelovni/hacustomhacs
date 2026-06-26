@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.90.0";
+const VERSION = "0.91.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5709,25 +5709,35 @@ class JmaMatchCard extends HTMLElement {
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       @keyframes m-blink{0%,100%{opacity:1}50%{opacity:.25}}
-      .mw{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vh;
-        min-height:78vh;text-align:center;padding:3vh 2vw;box-sizing:border-box;}
-      .mcomp{font-size:1.8vw;font-weight:800;letter-spacing:.25vw;text-transform:uppercase;color:var(--jma-icon);opacity:.7;}
-      .mrow{display:flex;align-items:center;justify-content:center;gap:4vw;width:100%;}
-      .mteam{display:flex;flex-direction:column;align-items:center;gap:1.4vh;width:24vw;min-width:0;}
-      .mteam img{height:13vw;width:13vw;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.25));}
-      .mab{font-size:3.4vw;font-weight:900;letter-spacing:.1vw;line-height:1;}
-      .mnm{font-size:1.5vw;opacity:.55;font-weight:700;}
-      .mscore{display:flex;align-items:center;gap:2.2vw;font-weight:200;line-height:.82;}
-      .mscore b{font-size:20vw;font-weight:200;font-variant-numeric:tabular-nums;}
-      .mdash{font-size:9vw;opacity:.2;}
-      .mstatus{font-size:2.6vw;font-weight:900;letter-spacing:.1vw;padding:1vh 3vw;border-radius:99px;
+      .mw{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.8vh;
+        min-height:80vh;text-align:center;padding:2.5vh 2vw;box-sizing:border-box;}
+      .mcomp{display:flex;align-items:center;gap:1vw;font-size:1.6vw;font-weight:800;letter-spacing:.2vw;text-transform:uppercase;color:var(--jma-icon);opacity:.75;}
+      .mcomp img{height:2.6vw;width:2.6vw;object-fit:contain;}
+      .mcomp .mseason{opacity:.55;font-weight:700;}
+      .mrow{display:flex;align-items:flex-start;justify-content:center;gap:3.5vw;width:100%;}
+      .mteam{display:flex;flex-direction:column;align-items:center;gap:1vh;width:24vw;min-width:0;}
+      .mteam img{height:12vw;width:12vw;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.25));}
+      .mab{font-size:3.2vw;font-weight:900;letter-spacing:.1vw;line-height:1;}
+      .mnm{font-size:1.4vw;opacity:.55;font-weight:700;}
+      .mcbar{width:6vw;height:.7vh;border-radius:99px;margin-top:.3vh;}
+      .mrec{font-size:1.15vw;font-weight:800;opacity:.6;letter-spacing:.05vw;}
+      .mscore{display:flex;align-items:center;gap:2vw;font-weight:200;line-height:.82;margin-top:1vh;}
+      .mscore b{font-size:18vw;font-weight:200;font-variant-numeric:tabular-nums;}
+      .mdash{font-size:8vw;opacity:.2;}
+      .mstatus{font-size:2.4vw;font-weight:900;letter-spacing:.1vw;padding:1vh 3vw;border-radius:99px;
         background:var(--jma-surf2);color:var(--jma-text);}
       .mstatus.live{background:rgba(54,224,127,.16);color:#1f9d57;}
       .mstatus.live::before{content:"\\25CF  ";animation:m-blink 1s infinite;}
-      .msub{font-size:1.5vw;opacity:.45;font-weight:600;}
+      .mchips{display:flex;flex-wrap:wrap;gap:1vw;justify-content:center;}
+      .mchip{font-size:1.3vw;font-weight:700;opacity:.6;background:var(--jma-surf3);border-radius:99px;padding:.7vh 1.6vw;}
+      .mstats{display:flex;gap:2.5vw;font-size:1.5vw;font-weight:800;opacity:.7;margin-top:.5vh;}
+      .mstats span b{color:var(--jma-text);}
+      .mlast{font-size:1.3vw;opacity:.55;font-weight:600;max-width:60vw;font-style:italic;}
       .mempty{font-size:2.4vw;opacity:.5;font-weight:800;padding:30vh 0;}
     </style>` + CARD_WRAP_OPEN + `<div id="root"></div></ha-card>`;
   }
+  _ddup(s) { return s ? [...new Set(String(s).split("/").map((x) => x.trim()).filter(Boolean))].join(" · ") : ""; }
+  _rec(r) { if (!r) return ""; const p = String(r).split("-"); return p.length >= 3 ? `${p[0]}V · ${p[1]}N · ${p[2]}D` : r; }
   _update() {
     const s = this._hass && this._hass.states[this._config.entity];
     const root = this.shadowRoot.getElementById("root"); if (!root) return;
@@ -5741,18 +5751,37 @@ class JmaMatchCard extends HTMLElement {
     const status = pre ? ("Coup d'envoi" + (ko ? " · " + ko : (a.kickoff_in ? " · " + a.kickoff_in : "")))
       : half ? "MI-TEMPS" : post ? "TERMINÉ"
       : live ? ("EN DIRECT" + (a.clock ? " · " + a.clock : "")) : st;
+    const SEASONS = { "group-stage": "Phase de groupes", "round-of-16": "8es de finale", "quarterfinal": "Quarts de finale", "semifinal": "Demi-finales", "final": "Finale", "third-place": "3e place", "knockout-stage": "Phase finale" };
+    const season = SEASONS[a.season] || (a.season || "");
     const logo = (u) => u ? `<img src="${u}" onerror="this.style.display='none'">` : "";
-    const team = (lg, ab, nm) => `<div class="mteam">${logo(lg)}<div class="mab">${ab || ""}</div>${nm ? `<div class="mnm">${nm}</div>` : ""}</div>`;
+    const cbar = (cols) => Array.isArray(cols) && cols.length ? `<div class="mcbar" style="background:${cols[0]}"></div>` : "";
+    const team = (lg, ab, nm, rec, cols) => `<div class="mteam">${logo(lg)}<div class="mab">${ab || ""}</div>${nm ? `<div class="mnm">${nm}</div>` : ""}${cbar(cols)}${rec ? `<div class="mrec">${this._rec(rec)}</div>` : ""}</div>`;
+    // chips d'infos (lieu, TV, coup d'envoi)
+    const chips = [];
+    if (a.venue) chips.push(`📍 ${a.venue}${a.location ? " · " + String(a.location).split(",")[0] : ""}`);
+    const tv = this._ddup(a.tv_network); if (tv) chips.push(`📺 ${tv}`);
+    if (pre && (ko || a.kickoff_in)) chips.push(`🕘 ${ko}${a.kickoff_in ? " · " + a.kickoff_in : ""}`);
+    // stats live
+    const stats = [];
+    if (live || half || post) {
+      if (a.team_total_shots != null || a.opponent_total_shots != null)
+        stats.push(`Tirs <b>${a.team_total_shots != null ? a.team_total_shots : "–"}</b> – <b>${a.opponent_total_shots != null ? a.opponent_total_shots : "–"}</b>`);
+      if (a.team_shots_on_target != null || a.opponent_shots_on_target != null)
+        stats.push(`Cadrés <b>${a.team_shots_on_target != null ? a.team_shots_on_target : "–"}</b> – <b>${a.opponent_shots_on_target != null ? a.opponent_shots_on_target : "–"}</b>`);
+      if (a.possession) stats.push(`Possession <b>${a.possession}</b>`);
+    }
     root.innerHTML =
       `<div class="mw">` +
-        `<div class="mcomp">${a.league_name || a.league || "Match"}</div>` +
+        `<div class="mcomp">${logo(a.league_logo)}<span>${a.league_name || a.league || "Match"}</span>${season ? `<span class="mseason">· ${season}</span>` : ""}</div>` +
         `<div class="mrow">` +
-          team(a.team_logo, a.team_abbr, a.team_name) +
+          team(a.team_logo, a.team_abbr, a.team_name, a.team_record, a.team_colors) +
           `<div class="mscore"><b>${a.team_score != null ? a.team_score : "0"}</b><span class="mdash">–</span><b>${a.opponent_score != null ? a.opponent_score : "0"}</b></div>` +
-          team(a.opponent_logo, a.opponent_abbr, a.opponent_name) +
+          team(a.opponent_logo, a.opponent_abbr, a.opponent_name, a.opponent_record, a.opponent_colors) +
         `</div>` +
         `<div class="mstatus ${live ? "live" : ""}">${status}</div>` +
-        (a.venue ? `<div class="msub">${a.venue}</div>` : "") +
+        (stats.length ? `<div class="mstats">${stats.map((x) => `<span>${x}</span>`).join("")}</div>` : "") +
+        (a.last_play ? `<div class="mlast">⚽ ${a.last_play}</div>` : "") +
+        (chips.length ? `<div class="mchips">${chips.map((x) => `<span class="mchip">${x}</span>`).join("")}</div>` : "") +
       `</div>`;
   }
 }
