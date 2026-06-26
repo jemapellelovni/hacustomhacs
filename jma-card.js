@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.93.0";
+const VERSION = "0.94.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5710,30 +5710,30 @@ class JmaMatchCard extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};}
       @keyframes m-blink{0%,100%{opacity:1}50%{opacity:.25}}
       .mw{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.8vh;
-        min-height:80vh;text-align:center;padding:2.5vh 2vw;box-sizing:border-box;}
-      .mcomp{display:flex;align-items:center;gap:1vw;font-size:1.6vw;font-weight:800;letter-spacing:.2vw;text-transform:uppercase;color:var(--jma-icon);opacity:.75;}
+        min-height:80vh;text-align:center;padding:2.5vh 2vw;box-sizing:border-box;color:#2a2114;}
+      .mcomp{display:flex;align-items:center;gap:1vw;font-size:1.6vw;font-weight:800;letter-spacing:.2vw;text-transform:uppercase;color:#7a6a4c;}
       .mcomp img{height:2.6vw;width:2.6vw;object-fit:contain;}
-      .mcomp .mseason{opacity:.55;font-weight:700;}
+      .mcomp .mseason{color:#9a8a6c;font-weight:700;}
       .mrow{display:flex;align-items:flex-start;justify-content:center;gap:3.5vw;width:100%;}
       .mteam{display:flex;flex-direction:column;align-items:center;gap:1vh;width:24vw;min-width:0;}
       .mteam img{height:12vw;width:12vw;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.25));}
-      .mab{font-size:3.2vw;font-weight:900;letter-spacing:.1vw;line-height:1;}
-      .mnm{font-size:1.4vw;opacity:.55;font-weight:700;}
+      .mab{font-size:3.2vw;font-weight:900;letter-spacing:.1vw;line-height:1;color:#23190d;}
+      .mnm{font-size:1.4vw;color:#5c5038;font-weight:700;}
       .mcbar{width:6vw;height:.7vh;border-radius:99px;margin-top:.3vh;}
-      .mrec{font-size:1.15vw;font-weight:800;opacity:.6;letter-spacing:.05vw;}
-      .mscore{display:flex;align-items:center;gap:2vw;font-weight:200;line-height:.82;margin-top:1vh;}
+      .mrec{font-size:1.15vw;font-weight:800;color:#6a5c45;letter-spacing:.05vw;}
+      .mscore{display:flex;align-items:center;gap:2vw;font-weight:200;line-height:.82;margin-top:1vh;color:#1c1408;}
       .mscore b{font-size:18vw;font-weight:200;font-variant-numeric:tabular-nums;}
-      .mdash{font-size:8vw;opacity:.2;}
+      .mdash{color:#b8a987;}
       .mstatus{font-size:2.4vw;font-weight:900;letter-spacing:.1vw;padding:1vh 3vw;border-radius:99px;
-        background:var(--jma-surf2);color:var(--jma-text);}
-      .mstatus.live{background:rgba(54,224,127,.16);color:#1f9d57;}
+        background:rgba(66,56,42,.1);color:#2a2114;}
+      .mstatus.live{background:rgba(54,224,127,.2);color:#127c41;}
       .mstatus.live::before{content:"\\25CF  ";animation:m-blink 1s infinite;}
       .mchips{display:flex;flex-wrap:wrap;gap:1vw;justify-content:center;}
-      .mchip{font-size:1.3vw;font-weight:700;opacity:.6;background:var(--jma-surf3);border-radius:99px;padding:.7vh 1.6vw;}
-      .mstats{display:flex;gap:2.5vw;font-size:1.5vw;font-weight:800;opacity:.7;margin-top:.5vh;}
-      .mstats span b{color:var(--jma-text);}
-      .mlast{font-size:1.3vw;opacity:.55;font-weight:600;max-width:60vw;font-style:italic;}
-      .mempty{font-size:2.4vw;opacity:.5;font-weight:800;padding:30vh 0;}
+      .mchip{font-size:1.3vw;font-weight:700;color:#5c5038;background:rgba(66,56,42,.08);border-radius:99px;padding:.7vh 1.6vw;}
+      .mstats{display:flex;gap:2.5vw;font-size:1.5vw;font-weight:800;color:#4a4030;margin-top:.5vh;}
+      .mstats span b{color:#1c1408;}
+      .mlast{font-size:1.3vw;color:#6a5c45;font-weight:600;max-width:60vw;font-style:italic;}
+      .mempty{font-size:2.4vw;color:#6a5c45;font-weight:800;padding:30vh 0;}
     </style>` + CARD_WRAP_OPEN + `<div id="root"></div></ha-card>`;
   }
   _ddup(s) { return s ? [...new Set(String(s).split("/").map((x) => x.trim()).filter(Boolean))].join(" · ") : ""; }
@@ -5804,7 +5804,7 @@ class JmaVolumeCard extends HTMLElement {
       .vmute{flex:none;width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
       .vmute:active{transform:scale(.92);}.vmute ha-icon{--mdc-icon-size:22px;}
       .vmute.muted{background:rgba(224,72,74,.16);}.vmute.muted ha-icon{color:#e0484a;}
-      .vnm{font-size:.8rem;font-weight:800;opacity:.55;flex:none;letter-spacing:.2px;}
+      .vnm{font-size:.8rem;font-weight:800;color:#5c5038;flex:none;letter-spacing:.2px;}
       .vsl{flex:1;min-width:0;}.vsl .slider{height:40px;}
     </style>` + CARD_WRAP_OPEN + `<div class="vrow">` +
       `<button class="vmute" id="mute"><ha-icon id="micon" icon="mdi:volume-high"></ha-icon></button>` +
