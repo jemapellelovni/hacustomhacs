@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.88.0";
+const VERSION = "0.89.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5064,6 +5064,30 @@ class JmaScreensaverCard extends HTMLElement {
     this._timer = setInterval(() => { this._idle++; if (!this._shown && this._idle >= (this._config.timeout || 3) * 60) this._show(); }, 1000);
   }
   _disarm() { if (this._reset && window.removeEventListener) this._evs.forEach((ev) => window.removeEventListener(ev, this._reset)); this._reset = null; clearInterval(this._timer); }
+  _matchPanel() {
+    const me = this._config.match_entity; const s = me && this._hass && this._hass.states[me];
+    if (!s || ["NOT_FOUND", "BYE", "", "unavailable", "unknown"].includes(s.state)) return null;
+    const panel = document.createElement("div"); panel.className = "ss-match";
+    const logo = (u) => u ? `<img src="${u}" onerror="this.style.display='none'">` : "";
+    const render = () => {
+      const s2 = this._hass.states[me]; if (!s2) return; const a = s2.attributes; const st = s2.state;
+      const live = st === "IN", half = st === "HALF", pre = st === "PRE", post = st === "POST";
+      const status = pre ? ("Coup d'envoi" + (a.kickoff_in ? " · " + a.kickoff_in : ""))
+        : half ? "MI-TEMPS" : post ? "TERMINÉ"
+        : live ? ("EN DIRECT" + (a.clock ? " · " + a.clock : "")) : st;
+      panel.innerHTML =
+        `<div class="ssm-comp">${a.league_name || a.league || "Match"}</div>` +
+        `<div class="ssm-row">` +
+          `<div class="ssm-team">${logo(a.team_logo)}<div class="ssm-ab">${a.team_abbr || ""}</div></div>` +
+          `<div class="ssm-score">${a.team_score != null ? a.team_score : "0"}<span class="ssm-dash">–</span>${a.opponent_score != null ? a.opponent_score : "0"}</div>` +
+          `<div class="ssm-team">${logo(a.opponent_logo)}<div class="ssm-ab">${a.opponent_abbr || ""}</div></div>` +
+        `</div>` +
+        `<div class="ssm-status ${live ? "live" : ""}">${status}</div>` +
+        (a.venue ? `<div class="ssm-venue">${a.venue}</div>` : "");
+    };
+    render(); clearInterval(this._matchTimer); this._matchTimer = setInterval(render, 4000);
+    return panel;
+  }
   _show() {
     if (this._shown) return; this._shown = true;
     // fermer tout pop-up JMA ouvert pour que la veille prenne le dessus proprement
@@ -5118,6 +5142,22 @@ class JmaScreensaverCard extends HTMLElement {
       .ss-act:active{transform:scale(.94);}
       .ss-act.done{background:rgba(120,220,150,.22);border-color:rgba(120,220,150,.5);}
       .ss-act.done ha-icon{color:#7fe0a0;}
+      @keyframes ssm-blink{0%,100%{opacity:1}50%{opacity:.25}}
+      .ss-match{position:absolute;top:49%;left:50%;transform:translate(-50%,-50%);text-align:center;
+        background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+        border:1px solid rgba(255,255,255,.09);border-radius:2.4vw;padding:3vh 4.5vw;
+        display:flex;flex-direction:column;align-items:center;gap:1.4vh;}
+      .ssm-comp{font-size:1.45vw;letter-spacing:.25vw;text-transform:uppercase;opacity:.5;font-weight:800;}
+      .ssm-row{display:flex;align-items:center;gap:3.2vw;}
+      .ssm-team{display:flex;flex-direction:column;align-items:center;gap:1vh;width:13vw;}
+      .ssm-team img{height:8vw;width:8vw;object-fit:contain;filter:drop-shadow(0 4px 16px rgba(0,0,0,.55));}
+      .ssm-ab{font-size:2.3vw;font-weight:800;letter-spacing:.1vw;}
+      .ssm-score{font-size:8.5vw;font-weight:200;line-height:.9;letter-spacing:-.3vw;display:flex;align-items:center;gap:1.6vw;}
+      .ssm-dash{opacity:.3;font-size:4.5vw;}
+      .ssm-status{font-size:1.9vw;font-weight:700;opacity:.65;letter-spacing:.08vw;}
+      .ssm-status.live{color:#36e07f;opacity:1;}
+      .ssm-status.live::before{content:"\\25CF  ";animation:ssm-blink 1s infinite;}
+      .ssm-venue{font-size:1.25vw;opacity:.32;}
     `;
     const wrap = document.createElement("div"); wrap.className = "ss-wrap";
     wrap.innerHTML =
@@ -5126,6 +5166,9 @@ class JmaScreensaverCard extends HTMLElement {
       `<div class="ss-wx2" id="jcw" style="display:none"><div class="ss-wnow" id="jwnow"></div><div class="wfc" id="jwfc"></div></div>` +
       `<div class="ss-agenda" id="jca"></div>`;
     o.appendChild(st); o.appendChild(wrap);
+    // panneau match (si un match est configuré) : prend le centre, masque la barre énergie
+    const mp = this._matchPanel();
+    if (mp) { o.appendChild(mp); const ctr = wrap.querySelector(".ss-center"); if (ctr) ctr.style.display = "none"; }
     o.addEventListener("pointerdown", (e) => { e.stopPropagation(); this._hide(); });
     // boutons d'action (haut-droite) : ne ferment PAS la veille
     const actions = this._config.actions || [];
@@ -5277,7 +5320,7 @@ class JmaScreensaverCard extends HTMLElement {
         `<div class="info"><span class="ti">${e.t}</span><span class="hr">${hr}</span></div></div>`;
     }).join("");
   }
-  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); clearInterval(this._gTimer); clearInterval(this._fcTimer); this._idle = 0; this._actWrap = null; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
+  _hide() { this._shown = false; clearInterval(this._clk); clearInterval(this._shiftTimer); clearInterval(this._agTimer); clearInterval(this._gTimer); clearInterval(this._fcTimer); clearInterval(this._matchTimer); this._idle = 0; this._actWrap = null; if (this._ovl) { const o = this._ovl; this._ovl = null; this._clkEl = null; o.style.opacity = "0"; setTimeout(() => o.remove(), 600); } }
 }
 jmaDef("jma-screensaver-card", JmaScreensaverCard);
 // =============================================================================
