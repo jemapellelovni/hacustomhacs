@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.91.0";
+const VERSION = "0.92.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5788,6 +5788,48 @@ class JmaMatchCard extends HTMLElement {
 jmaDef("jma-match-card", JmaMatchCard);
 
 // =============================================================================
+//  🔊 VOLUME (slider seul, style footer) — pour le son TV / une enceinte
+// =============================================================================
+class JmaVolumeCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) { if (!c.entity) throw new Error("volume : 'entity' requis"); this._config = { color: ROSE, accent: BEIGE, dark: DARK, ...c }; }
+  getCardSize() { return 1; }
+  static getStubConfig() { return { entity: "media_player.sejour", name: "Son TV" }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update(); }
+  _st() { return this._hass && this._hass.states[this._config.entity]; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};display:block;}
+      .vrow{display:flex;align-items:center;gap:13px;padding:11px 16px;background:var(--jma-surf2);border-radius:22px;box-shadow:0 8px 26px rgba(0,0,0,.10);}
+      .vmute{flex:none;width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;background:var(--jma-surf3);color:var(--jma-text);display:flex;align-items:center;justify-content:center;transition:transform .08s;}
+      .vmute:active{transform:scale(.92);}.vmute ha-icon{--mdc-icon-size:22px;}
+      .vmute.muted{background:rgba(224,72,74,.16);}.vmute.muted ha-icon{color:#e0484a;}
+      .vnm{font-size:.8rem;font-weight:800;opacity:.55;flex:none;letter-spacing:.2px;}
+      .vsl{flex:1;min-width:0;}.vsl .slider{height:40px;}
+    </style>` + CARD_WRAP_OPEN + `<div class="vrow">` +
+      `<button class="vmute" id="mute"><ha-icon id="micon" icon="mdi:volume-high"></ha-icon></button>` +
+      (c.name ? `<div class="vnm">${c.name}</div>` : "") +
+      `<div class="vsl" id="sl"></div></div></ha-card>`;
+    this._sl = jmaSlider({ fmt: (v) => v + "%", onCommit: (v) => this._set(v), label: c.name || "Volume" });
+    this.shadowRoot.getElementById("sl").appendChild(this._sl);
+    this.shadowRoot.getElementById("mute").addEventListener("click", () => {
+      const s = this._st(); if (!s) return;
+      this._hass.callService("media_player", "volume_mute", { entity_id: this._config.entity, is_volume_muted: !s.attributes.is_volume_muted });
+    });
+  }
+  _set(v) { this._hass.callService("media_player", "volume_set", { entity_id: this._config.entity, volume_level: Math.max(0, Math.min(1, v / 100)) }); }
+  _update() {
+    const s = this._st(); if (!s) return; const a = s.attributes;
+    const muted = !!a.is_volume_muted, vol = Math.round((a.volume_level || 0) * 100);
+    const mb = this.shadowRoot.getElementById("mute"); if (mb) mb.classList.toggle("muted", muted);
+    const mi = this.shadowRoot.getElementById("micon");
+    if (mi) mi.setAttribute("icon", muted ? "mdi:volume-off" : vol === 0 ? "mdi:volume-mute" : vol < 50 ? "mdi:volume-medium" : "mdi:volume-high");
+    if (this._sl && !this._sl.dragging) this._sl.setValue(muted ? 0 : vol);
+  }
+}
+jmaDef("jma-volume-card", JmaVolumeCard);
+
+// =============================================================================
 window.customCards = window.customCards || [];
 const REG = (type, name, description) => window.customCards.push({ type, name, description, preview: true });
 REG("jma-card", "JMA Card (auto)", "Carte universelle flat/iOS : slider horizontal + pop-up.");
@@ -5817,6 +5859,7 @@ REG("jma-room-card", "JMA Pièce", "Regroupe les entités d'une pièce.");
 REG("jma-cameras-card", "JMA Multi-caméras", "Mosaïque de caméras.");
 REG("jma-sonos-card", "JMA Sonos", "Multi-room : groupes + volume par pièce.");
 REG("jma-match-card", "JMA Match", "Score géant + statut live (Team Tracker).");
+REG("jma-volume-card", "JMA Volume", "Slider de volume seul (son TV / enceinte).");
 REG("jma-saint-card", "JMA Saint du jour", "Saint du jour (calendrier français).");
 REG("jma-energy-today-card", "JMA Énergie du jour", "Bilan kWh du jour + coût € EDF.");
 REG("jma-favorites-card", "JMA Favoris", "Grille de raccourcis (scènes, services, navigation).");
