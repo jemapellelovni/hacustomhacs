@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.92.0";
+const VERSION = "0.93.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -5810,6 +5810,11 @@ class JmaVolumeCard extends HTMLElement {
       `<button class="vmute" id="mute"><ha-icon id="micon" icon="mdi:volume-high"></ha-icon></button>` +
       (c.name ? `<div class="vnm">${c.name}</div>` : "") +
       `<div class="vsl" id="sl"></div></div></ha-card>`;
+    if (c.footer) {
+      // épinglée en bas, centrée, au-dessus du dock -> toujours visible sans scroll
+      this.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);" +
+        "bottom:calc(env(safe-area-inset-bottom,0px) + 84px);width:min(92vw,460px);z-index:6;";
+    }
     this._sl = jmaSlider({ fmt: (v) => v + "%", onCommit: (v) => this._set(v), label: c.name || "Volume" });
     this.shadowRoot.getElementById("sl").appendChild(this._sl);
     this.shadowRoot.getElementById("mute").addEventListener("click", () => {
