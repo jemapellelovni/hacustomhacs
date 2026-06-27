@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.95.0";
+const VERSION = "0.96.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1225,119 +1225,147 @@ class JmaVacuumProCard extends HTMLElement {
     if (!c.entity) throw new Error("aspirateur : 'entity' requis");
     this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Aspirateur",
       fans: [["quiet", "Silence"], ["balanced", "Éco"], ["turbo", "Turbo"], ["max", "Max"], ["max_plus", "Max+"]],
-      scrubs: [["low", "Léger"], ["medium", "Moyen"], ["extreme", "Intense"]], rooms: [], ...c };
+      scrubs: [["low", "Léger"], ["medium", "Moyen"], ["extreme", "Intense"]], rooms: [], dock: [], ...c };
   }
   getCardSize() { return 12; }
   static getStubConfig() { return { entity: "vacuum.example", map_entity: "image.example" }; }
-  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } jmaApplyTheme(this, h, this._config); this._update();
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update();
     if (!this._mapTimer) this._mapTimer = setInterval(() => this._paintMap(), 8000); }
   disconnectedCallback() { clearInterval(this._mapTimer); this._mapTimer = null; }
   _call(d, s, data) { this._hass.callService(d, s, data); }
+  _st() { return this._hass && this._hass.states[this._config.entity]; }
+  _num(ent) { const s = ent && this._hass.states[ent]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
   _build() {
     const c = this._config;
-    this.shadowRoot.innerHTML = `<style>${BASE_CSS}:host{--jma-rose:${c.color};--jma-beige:${c.accent};--jma-dark:${c.dark};display:block;}
-      .vp{position:relative;height:86vh;border-radius:26px;overflow:hidden;
-        background:radial-gradient(120% 120% at 50% 0%,#1b2030,#0b0d14 70%);box-shadow:0 18px 50px rgba(0,0,0,.22);}
-      .vp-map{position:absolute;inset:0 0 38% 0;background-repeat:no-repeat;background-position:center;background-size:contain;}
-      .vp-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;padding:20px 24px;
-        background:linear-gradient(180deg,rgba(0,0,0,.45),transparent);color:#fff;}
-      .vp-tic{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex:none;}
-      .vp-tic ha-icon{--mdc-icon-size:26px;color:#fff;}
-      .vp-tic.run{background:var(--jma-grad);} .vp-tic.run ha-icon{color:#0b0d14;}
-      .vp-name{font-size:1.5rem;font-weight:900;letter-spacing:.3px;}
-      .vp-state{font-size:.95rem;opacity:.8;font-weight:600;margin-top:2px;}
-      .vp-bat{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:1.1rem;font-weight:800;}
-      .vp-bat ha-icon{--mdc-icon-size:24px;}
-      .vp-panel{position:absolute;left:0;right:0;bottom:0;padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px;
-        background:linear-gradient(180deg,transparent,rgba(8,10,16,.82) 22%);color:#fff;}
-      .vp-glass{background:rgba(255,255,255,.08);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-        border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:12px;}
-      .vp-actions{display:flex;gap:10px;align-items:stretch;}
-      .vp-primary{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;border:none;cursor:pointer;
-        border-radius:16px;padding:16px;font-size:1.15rem;font-weight:900;background:var(--jma-grad);color:#0b0d14;}
-      .vp-primary:active{transform:scale(.98);} .vp-primary ha-icon{--mdc-icon-size:24px;}
-      .vp-act{width:60px;border:none;cursor:pointer;border-radius:16px;background:rgba(255,255,255,.12);color:#fff;display:flex;align-items:center;justify-content:center;}
-      .vp-act:active{transform:scale(.95);} .vp-act ha-icon{--mdc-icon-size:24px;}
-      .vp-seg{display:flex;gap:6px;}
-      .vp-slbl{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;opacity:.55;align-self:center;width:62px;flex:none;}
-      .vp-segwrap{display:flex;gap:6px;flex:1;}
-      .vp-pill{flex:1;text-align:center;cursor:pointer;border:none;border-radius:12px;padding:9px 4px;font-size:.86rem;font-weight:800;
-        background:rgba(255,255,255,.1);color:#fff;transition:background .2s,transform .08s;}
-      .vp-pill:active{transform:scale(.95);}
-      .vp-pill.on{background:var(--jma-grad);color:#0b0d14;box-shadow:0 4px 14px rgba(248,165,194,.4);}
-      .vp-rooms{display:flex;gap:7px;flex-wrap:wrap;}
-      .vp-room{display:flex;align-items:center;gap:5px;cursor:pointer;border:none;border-radius:13px;padding:8px 12px;
-        font-size:.85rem;font-weight:700;background:rgba(255,255,255,.1);color:#fff;}
-      .vp-room:active{transform:scale(.95);background:var(--jma-grad);color:#0b0d14;} .vp-room ha-icon{--mdc-icon-size:17px;}
-    </style>` + CARD_WRAP_OPEN + `<div class="vp">
-        <div class="vp-map" id="map"></div>
-        <div class="vp-top"><div class="vp-tic" id="tic"><ha-icon id="sic" icon="mdi:robot-vacuum"></ha-icon></div>
-          <div><div class="vp-name">${c.name}</div><div class="vp-state" id="state">—</div></div>
-          <div class="vp-bat" id="bat" hidden><ha-icon id="bic" icon="mdi:battery"></ha-icon><span id="bpc"></span></div></div>
-        <div class="vp-panel">
-          <div class="vp-glass" style="display:flex;flex-direction:column;gap:10px;">
-            <div class="vp-actions">
-              <button class="vp-primary" id="primary"><ha-icon id="pic" icon="mdi:play"></ha-icon><span id="ptxt">Démarrer</span></button>
-              <button class="vp-act" id="pause"><ha-icon icon="mdi:pause"></ha-icon></button>
-              <button class="vp-act" id="locate"><ha-icon icon="mdi:map-marker"></ha-icon></button>
+    this.shadowRoot.innerHTML = `<style>
+      :host{display:block;}*{box-sizing:border-box;}
+      .vm{display:grid;grid-template-columns:1.35fr 1fr;grid-template-rows:auto 1fr auto;gap:14px;min-height:87vh;color:#3a3128;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+      .vc{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.72);border-radius:28px;
+        box-shadow:0 12px 40px rgba(120,100,70,.10),inset 0 1px 0 rgba(255,255,255,.6);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
+      .vm-head{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:16px 22px;}
+      .vm-av{width:58px;height:58px;border-radius:20px;background:linear-gradient(135deg,${c.color},${c.accent});display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 8px 22px rgba(248,165,194,.32);}
+      .vm-av ha-icon{--mdc-icon-size:32px;color:#fff;}
+      .vm-h1{font-size:1.55rem;font-weight:800;letter-spacing:.2px;}
+      .vm-state{display:inline-flex;align-items:center;gap:7px;margin-top:3px;font-size:.92rem;font-weight:700;color:#7a6a4c;background:rgba(248,165,194,.16);padding:4px 12px;border-radius:99px;}
+      .vm-state .dot{width:8px;height:8px;border-radius:50%;background:#9a8a6c;}
+      .vm-state.run .dot{background:#36c46f;box-shadow:0 0 0 4px rgba(54,196,111,.18);animation:vm-bl 1.4s infinite;}
+      @keyframes vm-bl{50%{opacity:.4}}
+      .vm-r{margin-left:auto;display:flex;align-items:center;gap:12px;}
+      .vm-stats{display:flex;gap:9px;}
+      .vm-stat{background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.6);border-radius:16px;padding:9px 15px;text-align:center;min-width:84px;}
+      .vm-stat .v{font-size:1.15rem;font-weight:800;}.vm-stat .l{font-size:.68rem;font-weight:700;color:#9a8a6c;text-transform:uppercase;letter-spacing:.05em;margin-top:1px;}
+      .vm-ring{position:relative;width:68px;height:68px;flex:none;}
+      .vm-ring svg{transform:rotate(-90deg);}.vm-ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;}
+      .vm-map{grid-row:2/4;position:relative;overflow:hidden;padding:16px;display:flex;align-items:center;justify-content:center;}
+      .vm-map .mlab{position:absolute;top:18px;left:22px;font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.08em;z-index:2;}
+      .vm-map img{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;border-radius:18px;}
+      .vm-map .empty{font-size:.95rem;color:#9a8a6c;font-weight:700;}
+      .vm-ctrl{display:flex;flex-direction:column;gap:12px;padding:18px;}
+      .vm-cta{display:flex;gap:11px;}
+      .vm-main{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;border:none;cursor:pointer;
+        background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;border-radius:18px;padding:18px;font-size:1.18rem;font-weight:900;box-shadow:0 10px 26px rgba(248,165,194,.38);}
+      .vm-main:active{transform:scale(.98);}.vm-main ha-icon{--mdc-icon-size:24px;}
+      .vm-ico{width:58px;border:none;cursor:pointer;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.6);border-radius:18px;display:flex;align-items:center;justify-content:center;}
+      .vm-ico:active{transform:scale(.95);}.vm-ico ha-icon{--mdc-icon-size:24px;color:#5c5038;}
+      .vm-sl{font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.07em;margin:4px 2px -4px;}
+      .vm-seg{display:flex;gap:7px;background:rgba(120,100,70,.06);border-radius:16px;padding:5px;}
+      .vm-seg button{flex:1;border:none;cursor:pointer;background:transparent;border-radius:12px;padding:11px 4px;font-size:.88rem;font-weight:800;color:#6a5c45;transition:all .18s;}
+      .vm-seg button:active{transform:scale(.96);}
+      .vm-seg button.on{background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;box-shadow:0 4px 14px rgba(248,165,194,.4);}
+      .vm-rooms{grid-column:1/-1;display:flex;align-items:center;gap:9px;padding:14px 20px;flex-wrap:wrap;}
+      .vm-rl{font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.07em;margin-right:4px;}
+      .vm-chip{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:10px 15px;font-size:.92rem;font-weight:800;cursor:pointer;}
+      .vm-chip:active{transform:scale(.95);background:linear-gradient(135deg,${c.color},${c.accent});}
+      .vm-chip ha-icon{--mdc-icon-size:18px;color:#7a6a4c;}
+      .vm-dock{margin-left:auto;display:flex;gap:15px;}
+      .vm-di{display:flex;align-items:center;gap:6px;font-size:.84rem;font-weight:700;color:#6a5c45;}
+      .vm-di .d{width:9px;height:9px;border-radius:50%;background:#36c46f;}.vm-di.warn .d{background:#f0a500;}
+    </style>
+      <div class="vm">
+        <div class="vc vm-head">
+          <div class="vm-av"><ha-icon id="sic" icon="mdi:robot-vacuum"></ha-icon></div>
+          <div><div class="vm-h1">${c.name}</div><div class="vm-state" id="state"><span class="dot"></span><span id="stxt">—</span></div></div>
+          <div class="vm-r">
+            <div class="vm-stats">
+              <div class="vm-stat"><div class="v" id="sv">—</div><div class="l">Surface</div></div>
+              <div class="vm-stat"><div class="v" id="dv">—</div><div class="l">Durée</div></div>
+              <div class="vm-stat"><div class="v" id="tv">—</div><div class="l">Total</div></div>
             </div>
-            <div class="vp-seg"><span class="vp-slbl">Aspiration</span><div class="vp-segwrap" id="fan"></div></div>
-            <div class="vp-seg"><span class="vp-slbl">Lavage</span><div class="vp-segwrap" id="scrub"></div></div>
+            <div class="vm-ring"><svg width="68" height="68"><circle cx="34" cy="34" r="30" stroke="rgba(120,100,70,.12)" stroke-width="7" fill="none"/>
+              <circle id="bring" cx="34" cy="34" r="30" stroke="url(#vmg)" stroke-width="7" fill="none" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5"/>
+              <defs><linearGradient id="vmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c.color}"/><stop offset="1" stop-color="${c.accent}"/></linearGradient></defs></svg>
+              <div class="pct" id="bpc">—</div></div>
           </div>
-          <div class="vp-rooms" id="rooms"></div>
         </div>
-      </div></ha-card>`;
+        <div class="vc vm-map"><div class="mlab">🗺️ Plan de la maison</div><img id="map" hidden><div class="empty" id="mapempty">Carte indisponible</div></div>
+        <div class="vc vm-ctrl">
+          <div class="vm-cta">
+            <button class="vm-main" id="primary"><ha-icon id="pic" icon="mdi:play"></ha-icon><span id="ptxt">Démarrer</span></button>
+            <button class="vm-ico" id="pause"><ha-icon icon="mdi:pause"></ha-icon></button>
+            <button class="vm-ico" id="locate"><ha-icon icon="mdi:map-marker"></ha-icon></button>
+          </div>
+          <div class="vm-sl">Aspiration</div><div class="vm-seg" id="fan"></div>
+          <div class="vm-sl" id="scrublbl">Lavage</div><div class="vm-seg" id="scrub"></div>
+        </div>
+        <div class="vc vm-rooms"><span class="vm-rl">Nettoyer</span><span id="rooms" style="display:contents"></span><div class="vm-dock" id="dock"></div></div>
+      </div>`;
     this.shadowRoot.getElementById("primary").addEventListener("click", () => {
       const st = this._st(); const cleaning = st && st.state === "cleaning";
       this._call("vacuum", cleaning ? "return_to_base" : "start", { entity_id: this._config.entity });
     });
     this.shadowRoot.getElementById("pause").addEventListener("click", () => this._call("vacuum", "pause", { entity_id: this._config.entity }));
     this.shadowRoot.getElementById("locate").addEventListener("click", () => this._call("vacuum", "locate", { entity_id: this._config.entity }));
-    // segments aspiration
     const fanWrap = this.shadowRoot.getElementById("fan");
-    this._config.fans.forEach(([val, lbl]) => { const b = document.createElement("button"); b.className = "vp-pill"; b.dataset.v = val; b.textContent = lbl;
+    this._config.fans.forEach(([val, lbl]) => { const b = document.createElement("button"); b.dataset.v = val; b.textContent = lbl;
       b.addEventListener("click", () => this._call("vacuum", "set_fan_speed", { entity_id: this._config.entity, fan_speed: val })); fanWrap.appendChild(b); });
-    // segments lavage (scrub_entity)
     const scrubWrap = this.shadowRoot.getElementById("scrub");
-    if (this._config.scrub_entity) this._config.scrubs.forEach(([val, lbl]) => { const b = document.createElement("button"); b.className = "vp-pill"; b.dataset.v = val; b.textContent = lbl;
+    if (this._config.scrub_entity) this._config.scrubs.forEach(([val, lbl]) => { const b = document.createElement("button"); b.dataset.v = val; b.textContent = lbl;
       b.addEventListener("click", () => this._call("select", "select_option", { entity_id: this._config.scrub_entity, option: val })); scrubWrap.appendChild(b); });
-    else this.shadowRoot.getElementById("scrub").parentElement.style.display = "none";
-    // pièces
+    else { this.shadowRoot.getElementById("scrub").style.display = "none"; this.shadowRoot.getElementById("scrublbl").style.display = "none"; }
     const roomsWrap = this.shadowRoot.getElementById("rooms");
-    (this._config.rooms || []).forEach((r) => { const b = document.createElement("button"); b.className = "vp-room";
+    (this._config.rooms || []).forEach((r) => { const segs = r.segments || (r.segment != null ? [r.segment] : []); const b = document.createElement("button"); b.className = "vm-chip";
       b.innerHTML = `<ha-icon icon="${r.icon || "mdi:floor-plan"}"></ha-icon>${r.name}`;
-      b.addEventListener("click", () => this._call("vacuum", "send_command", { entity_id: this._config.entity, command: "app_segment_clean", params: [r.segment] })); roomsWrap.appendChild(b); });
+      b.addEventListener("click", () => this._call("vacuum", "send_command", { entity_id: this._config.entity, command: "app_segment_clean", params: segs })); roomsWrap.appendChild(b); });
+    const dockWrap = this.shadowRoot.getElementById("dock");
+    (this._config.dock || []).forEach((d) => { const el = document.createElement("span"); el.className = "vm-di"; el.dataset.e = d.entity; el.dataset.good = d.good || "off";
+      el.innerHTML = `<span class="d"></span>${d.label}`; dockWrap.appendChild(el); });
   }
-  _st() { return this._hass && this._hass.states[this._config.entity]; }
   _paintMap() {
-    const me = this._config.map_entity, s = me && this._hass.states[me]; const map = this.shadowRoot && this.shadowRoot.getElementById("map");
-    if (!map || !s || !s.attributes.entity_picture) return;
-    const p = s.attributes.entity_picture; map.style.backgroundImage = `url("${p}")`;
+    const me = this._config.map_entity, s = me && this._hass.states[me]; const img = this.shadowRoot && this.shadowRoot.getElementById("map");
+    if (!img) return; const p = s && s.attributes.entity_picture;
+    if (p) { img.src = p; img.hidden = false; const e = this.shadowRoot.getElementById("mapempty"); if (e) e.style.display = "none"; }
   }
+  _fmt(v, unit) { if (v == null) return "—"; return (Math.round(v * 10) / 10).toString().replace(".", ",") + unit; }
   _update() {
     const s = this._st(); if (!s) return; const a = s.attributes; const st = s.state;
     const running = st === "cleaning" || st === "returning";
-    this.shadowRoot.getElementById("tic").classList.toggle("run", running);
     this.shadowRoot.getElementById("sic").setAttribute("icon", running ? "mdi:robot-vacuum-variant" : "mdi:robot-vacuum");
     const area = this._config.area_entity && this._hass.states[this._config.area_entity];
     const room = (st === "cleaning" && area && !jmaUnavail(area)) ? " · " + area.state : "";
-    this.shadowRoot.getElementById("state").textContent = (VACUUM_FR[st] || st) + room;
+    this.shadowRoot.getElementById("stxt").textContent = (VACUUM_FR[st] || st) + room;
+    this.shadowRoot.getElementById("state").classList.toggle("run", running);
+    // stats
+    this.shadowRoot.getElementById("sv").textContent = this._fmt(this._num(this._config.surface_entity), " m²");
+    const dur = this._num(this._config.duration_entity);
+    this.shadowRoot.getElementById("dv").textContent = dur == null ? "—" : Math.round(dur) + " min";
+    const tot = this._num(this._config.total_entity);
+    this.shadowRoot.getElementById("tv").textContent = tot == null ? "—" : Math.round(tot);
     // batterie
-    const be = this._config.battery_entity && this._hass.states[this._config.battery_entity];
-    const bv = be ? parseFloat(be.state) : (a.battery_level != null ? a.battery_level : null);
-    const bat = this.shadowRoot.getElementById("bat");
-    if (bv != null && !isNaN(bv)) { bat.hidden = false; this.shadowRoot.getElementById("bpc").textContent = Math.round(bv) + "%";
-      this.shadowRoot.getElementById("bic").setAttribute("icon", jmaBatIcon(bv, st === "docked")); }
-    else bat.hidden = true;
+    const bv = this._num(this._config.battery_entity);
+    const ring = this.shadowRoot.getElementById("bring");
+    if (bv != null) { ring.style.strokeDashoffset = (188.5 * (1 - bv / 100)).toFixed(1); this.shadowRoot.getElementById("bpc").textContent = Math.round(bv) + "%"; }
     // bouton principal
     const cleaning = st === "cleaning";
     this.shadowRoot.getElementById("ptxt").textContent = cleaning ? "Retour base" : "Démarrer";
     this.shadowRoot.getElementById("pic").setAttribute("icon", cleaning ? "mdi:home-import-outline" : "mdi:play");
-    // segment actif aspiration
-    this.shadowRoot.querySelectorAll("#fan .vp-pill").forEach((b) => b.classList.toggle("on", b.dataset.v === a.fan_speed));
-    // segment actif lavage
+    // segments actifs
+    this.shadowRoot.querySelectorAll("#fan button").forEach((b) => b.classList.toggle("on", b.dataset.v === a.fan_speed));
     const sc = this._config.scrub_entity && this._hass.states[this._config.scrub_entity];
-    this.shadowRoot.querySelectorAll("#scrub .vp-pill").forEach((b) => b.classList.toggle("on", sc && b.dataset.v === sc.state));
+    this.shadowRoot.querySelectorAll("#scrub button").forEach((b) => b.classList.toggle("on", sc && b.dataset.v === sc.state));
+    // dock
+    this.shadowRoot.querySelectorAll(".vm-di").forEach((el) => { const ds = this._hass.states[el.dataset.e];
+      const ok = ds && ds.state === el.dataset.good; el.classList.toggle("warn", !ok); });
     this._paintMap();
   }
 }
