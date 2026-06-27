@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.96.0";
+const VERSION = "0.97.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1238,8 +1238,8 @@ class JmaVacuumProCard extends HTMLElement {
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>
-      :host{display:block;}*{box-sizing:border-box;}
-      .vm{display:grid;grid-template-columns:1.35fr 1fr;grid-template-rows:auto 1fr auto;gap:14px;min-height:87vh;color:#3a3128;
+      :host{display:block;height:100%;}*{box-sizing:border-box;}
+      .vm{display:grid;grid-template-columns:1.35fr 1fr;grid-template-rows:auto minmax(0,1fr) auto;gap:12px;height:100%;min-height:0;color:#3a3128;
         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
       .vc{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.72);border-radius:28px;
         box-shadow:0 12px 40px rgba(120,100,70,.10),inset 0 1px 0 rgba(255,255,255,.6);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
@@ -1257,7 +1257,7 @@ class JmaVacuumProCard extends HTMLElement {
       .vm-stat .v{font-size:1.15rem;font-weight:800;}.vm-stat .l{font-size:.68rem;font-weight:700;color:#9a8a6c;text-transform:uppercase;letter-spacing:.05em;margin-top:1px;}
       .vm-ring{position:relative;width:68px;height:68px;flex:none;}
       .vm-ring svg{transform:rotate(-90deg);}.vm-ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;}
-      .vm-map{grid-row:2/4;position:relative;overflow:hidden;padding:16px;display:flex;align-items:center;justify-content:center;}
+      .vm-map{grid-row:2;min-height:0;position:relative;overflow:hidden;padding:16px;display:flex;align-items:center;justify-content:center;}
       .vm-map .mlab{position:absolute;top:18px;left:22px;font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.08em;z-index:2;}
       .vm-map img{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;border-radius:18px;}
       .vm-map .empty{font-size:.95rem;color:#9a8a6c;font-weight:700;}
