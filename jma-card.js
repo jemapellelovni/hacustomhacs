@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.99.0";
+const VERSION = "0.99.1";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1318,6 +1318,21 @@ class JmaVacuumProCard extends HTMLElement {
       .vm-rng{display:flex;align-items:center;gap:14px;}
       .vm-rng input{flex:1;accent-color:${c.color};height:6px;}
       .vm-rng .rv{font-size:1rem;font-weight:850;color:#3a3128;min-width:52px;text-align:right;}
+      @media (max-width:760px){
+        .vm{grid-template-columns:1fr;grid-template-rows:auto auto auto auto;height:auto;min-height:0;gap:11px;}
+        .vm-head{flex-wrap:wrap;gap:12px;padding:14px 16px;}
+        .vm-h1{font-size:1.3rem;}
+        .vm-r{margin-left:0;width:100%;justify-content:space-between;}
+        .vm-stats{flex:1;}.vm-stat{min-width:0;flex:1;padding:8px 6px;}
+        .vm-map{grid-row:auto;height:200px;min-height:200px;}
+        .vm-ctrl{grid-row:auto;}
+        .vm-acts{margin-top:6px;}
+        .vm-dockrow{flex-wrap:wrap;}.vm-dc{min-width:calc(50% - 6px);}
+        .vm-sheet{padding:18px;border-radius:24px;}
+        .vm-rgrid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;}
+        .vm-rt{padding:14px 8px;border-radius:18px;font-size:.9rem;}
+        .vm-rt .rc{width:44px;height:44px;}
+      }
     </style>
       <div class="vm">
         <div class="vc vm-head">
