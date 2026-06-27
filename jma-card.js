@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.98.0";
+const VERSION = "0.99.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1225,7 +1225,7 @@ class JmaVacuumProCard extends HTMLElement {
     if (!c.entity) throw new Error("aspirateur : 'entity' requis");
     this._config = { color: ROSE, accent: BEIGE, dark: DARK, name: "Aspirateur",
       fans: [["quiet", "Silence"], ["balanced", "Éco"], ["turbo", "Turbo"], ["max", "Max"], ["max_plus", "Max+"]],
-      scrubs: [["low", "Léger"], ["medium", "Moyen"], ["extreme", "Intense"]], rooms: [], dock: [], ...c };
+      scrubs: [["low", "Léger"], ["medium", "Moyen"], ["extreme", "Intense"]], rooms: [], dock: [], settings: [], ...c };
   }
   getCardSize() { return 12; }
   static getStubConfig() { return { entity: "vacuum.example", map_entity: "image.example" }; }
@@ -1235,6 +1235,7 @@ class JmaVacuumProCard extends HTMLElement {
   _call(d, s, data) { this._hass.callService(d, s, data); }
   _st() { return this._hass && this._hass.states[this._config.entity]; }
   _num(ent) { const s = ent && this._hass.states[ent]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
+  _modal(id, on) { const m = this.shadowRoot.getElementById(id); if (m) m.classList.toggle("open", on); }
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>
@@ -1261,26 +1262,62 @@ class JmaVacuumProCard extends HTMLElement {
       .vm-map .mlab{position:absolute;top:18px;left:22px;font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.08em;z-index:2;}
       .vm-map img{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;border-radius:18px;}
       .vm-map .empty{font-size:.95rem;color:#9a8a6c;font-weight:700;}
-      .vm-ctrl{display:flex;flex-direction:column;gap:12px;padding:18px;}
+      .vm-ctrl{grid-row:2;min-height:0;display:flex;flex-direction:column;gap:11px;padding:18px;overflow:hidden;}
       .vm-cta{display:flex;gap:11px;}
       .vm-main{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;border:none;cursor:pointer;
-        background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;border-radius:18px;padding:18px;font-size:1.18rem;font-weight:900;box-shadow:0 10px 26px rgba(248,165,194,.38);}
+        background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;border-radius:18px;padding:16px;font-size:1.12rem;font-weight:900;box-shadow:0 10px 26px rgba(248,165,194,.38);}
       .vm-main:active{transform:scale(.98);}.vm-main ha-icon{--mdc-icon-size:24px;}
-      .vm-ico{width:58px;border:none;cursor:pointer;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.6);border-radius:18px;display:flex;align-items:center;justify-content:center;}
+      .vm-ico{width:54px;border:none;cursor:pointer;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.6);border-radius:18px;display:flex;align-items:center;justify-content:center;}
       .vm-ico:active{transform:scale(.95);}.vm-ico ha-icon{--mdc-icon-size:24px;color:#5c5038;}
-      .vm-sl{font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.07em;margin:4px 2px -4px;}
+      .vm-sl{font-size:.72rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.07em;margin:2px 2px -3px;}
       .vm-seg{display:flex;gap:7px;background:rgba(120,100,70,.06);border-radius:16px;padding:5px;}
-      .vm-seg button{flex:1;border:none;cursor:pointer;background:transparent;border-radius:12px;padding:11px 4px;font-size:.88rem;font-weight:800;color:#6a5c45;transition:all .18s;}
+      .vm-seg button{flex:1;border:none;cursor:pointer;background:transparent;border-radius:12px;padding:10px 4px;font-size:.85rem;font-weight:800;color:#6a5c45;transition:all .18s;}
       .vm-seg button:active{transform:scale(.96);}
       .vm-seg button.on{background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;box-shadow:0 4px 14px rgba(248,165,194,.4);}
-      .vm-rooms{grid-column:1/-1;display:flex;align-items:center;gap:9px;padding:14px 20px;flex-wrap:wrap;}
-      .vm-rl{font-size:.74rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.07em;margin-right:4px;}
-      .vm-chip{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:10px 15px;font-size:.92rem;font-weight:800;cursor:pointer;}
-      .vm-chip:active{transform:scale(.95);background:linear-gradient(135deg,${c.color},${c.accent});}
-      .vm-chip ha-icon{--mdc-icon-size:18px;color:#7a6a4c;}
-      .vm-dock{margin-left:auto;display:flex;gap:15px;}
-      .vm-di{display:flex;align-items:center;gap:6px;font-size:.84rem;font-weight:700;color:#6a5c45;}
-      .vm-di .d{width:9px;height:9px;border-radius:50%;background:#36c46f;}.vm-di.warn .d{background:#f0a500;}
+      .vm-acts{display:flex;gap:11px;margin-top:auto;}
+      .vm-big{flex:1;display:flex;align-items:center;justify-content:center;gap:9px;border:none;cursor:pointer;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.65);
+        border-radius:18px;padding:15px;font-size:1rem;font-weight:850;color:#4a3f30;}
+      .vm-big:active{transform:scale(.97);}.vm-big ha-icon{--mdc-icon-size:24px;color:${c.color};}
+      .vm-dockrow{grid-column:1/-1;display:flex;gap:11px;padding:13px 16px;align-items:stretch;}
+      .vm-dc{flex:1;display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);border-radius:18px;padding:11px 15px;}
+      .vm-dc .ic{width:38px;height:38px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(54,196,111,.16);}
+      .vm-dc .ic ha-icon{--mdc-icon-size:22px;color:#2faa52;}
+      .vm-dc .l{font-size:.72rem;font-weight:800;color:#9a8a6c;text-transform:uppercase;letter-spacing:.04em;}
+      .vm-dc .v{font-size:1rem;font-weight:850;color:#3faa5f;margin-top:1px;}
+      .vm-dc.warn .ic{background:rgba(240,165,0,.18);}.vm-dc.warn .ic ha-icon{color:#e09600;}.vm-dc.warn .v{color:#d18a00;}
+      /* popups */
+      .vm-modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:24px;
+        background:rgba(60,49,40,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+      .vm-modal.open{display:flex;animation:vm-fi .18s ease;}
+      @keyframes vm-fi{from{opacity:0}to{opacity:1}}
+      .vm-sheet{width:min(92vw,720px);max-height:86vh;overflow:auto;background:linear-gradient(165deg,#fbf8f1,#f3ecdd);border:1px solid rgba(255,255,255,.8);
+        border-radius:30px;box-shadow:0 30px 80px rgba(80,60,40,.34);padding:24px;animation:vm-up .22s cubic-bezier(.2,.9,.3,1);}
+      @keyframes vm-up{from{transform:translateY(18px);opacity:.6}to{transform:translateY(0);opacity:1}}
+      .vm-sh{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+      .vm-sh .t{font-size:1.35rem;font-weight:900;color:#3a3128;}
+      .vm-sh .x{margin-left:auto;width:42px;height:42px;border:none;cursor:pointer;border-radius:14px;background:rgba(120,100,70,.1);display:flex;align-items:center;justify-content:center;}
+      .vm-sh .x ha-icon{--mdc-icon-size:24px;color:#6a5c45;}
+      .vm-rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+      .vm-rt{display:flex;flex-direction:column;align-items:center;gap:9px;border:none;cursor:pointer;background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.7);
+        border-radius:22px;padding:20px 12px;font-size:1rem;font-weight:850;color:#3a3128;}
+      .vm-rt:active{transform:scale(.96);background:linear-gradient(135deg,${c.color},${c.accent});}
+      .vm-rt .rc{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,${c.color},${c.accent});}
+      .vm-rt .rc ha-icon{--mdc-icon-size:28px;color:#fff;}
+      .vm-allr{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:14px;border:none;cursor:pointer;
+        background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;border-radius:18px;padding:16px;font-size:1.05rem;font-weight:900;}
+      .vm-allr ha-icon{--mdc-icon-size:24px;}
+      .vm-set{display:flex;flex-direction:column;gap:18px;}
+      .vm-srow .sl{font-size:.82rem;font-weight:850;color:#6a5c45;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+      .vm-srow .sl ha-icon{--mdc-icon-size:20px;color:${c.color};}
+      .vm-opts{display:flex;gap:8px;flex-wrap:wrap;}
+      .vm-opt{border:none;cursor:pointer;background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.7);border-radius:14px;padding:11px 18px;font-size:.92rem;font-weight:800;color:#5a4f3c;}
+      .vm-opt.on{background:linear-gradient(135deg,${c.color},${c.accent});color:#3a2a1a;}
+      .vm-opt:active{transform:scale(.95);}
+      .vm-tog{border:none;cursor:pointer;border-radius:14px;padding:11px 22px;font-size:.95rem;font-weight:850;background:rgba(120,100,70,.12);color:#6a5c45;}
+      .vm-tog.on{background:linear-gradient(135deg,#36c46f,#2faa52);color:#fff;}
+      .vm-rng{display:flex;align-items:center;gap:14px;}
+      .vm-rng input{flex:1;accent-color:${c.color};height:6px;}
+      .vm-rng .rv{font-size:1rem;font-weight:850;color:#3a3128;min-width:52px;text-align:right;}
     </style>
       <div class="vm">
         <div class="vc vm-head">
@@ -1307,30 +1344,92 @@ class JmaVacuumProCard extends HTMLElement {
           </div>
           <div class="vm-sl">Aspiration</div><div class="vm-seg" id="fan"></div>
           <div class="vm-sl" id="scrublbl">Lavage</div><div class="vm-seg" id="scrub"></div>
+          <div class="vm-acts">
+            <button class="vm-big" id="openrooms"><ha-icon icon="mdi:floor-plan"></ha-icon>Pièces</button>
+            <button class="vm-big" id="openset"><ha-icon icon="mdi:tune-variant"></ha-icon>Réglages</button>
+          </div>
         </div>
-        <div class="vc vm-rooms"><span class="vm-rl">Nettoyer</span><span id="rooms" style="display:contents"></span><div class="vm-dock" id="dock"></div></div>
-      </div>`;
+        <div class="vc vm-dockrow" id="dock"></div>
+      </div>
+      <div class="vm-modal" id="m-rooms"><div class="vm-sheet">
+        <div class="vm-sh"><ha-icon style="--mdc-icon-size:26px;color:${c.color}" icon="mdi:floor-plan"></ha-icon>
+          <span class="t">Nettoyer une pièce</span><button class="x" id="x-rooms"><ha-icon icon="mdi:close"></ha-icon></button></div>
+        <div class="vm-rgrid" id="rgrid"></div>
+        <button class="vm-allr" id="allrooms"><ha-icon icon="mdi:home-floor-a"></ha-icon>Nettoyer toute la maison</button>
+      </div></div>
+      <div class="vm-modal" id="m-set"><div class="vm-sheet">
+        <div class="vm-sh"><ha-icon style="--mdc-icon-size:26px;color:${c.color}" icon="mdi:tune-variant"></ha-icon>
+          <span class="t">Réglages</span><button class="x" id="x-set"><ha-icon icon="mdi:close"></ha-icon></button></div>
+        <div class="vm-set" id="setbody"></div>
+      </div></div>`;
     if (c.panel) { const g = c.bottom_gap != null ? c.bottom_gap : 90; this.style.cssText = `position:fixed;top:8px;left:12px;right:12px;bottom:${g}px;overflow:hidden;z-index:1;`; }
-    this.shadowRoot.getElementById("primary").addEventListener("click", () => {
+    const SR = this.shadowRoot, ent = c.entity;
+    SR.getElementById("primary").addEventListener("click", () => {
       const st = this._st(); const cleaning = st && st.state === "cleaning";
-      this._call("vacuum", cleaning ? "return_to_base" : "start", { entity_id: this._config.entity });
+      this._call("vacuum", cleaning ? "return_to_base" : "start", { entity_id: ent });
     });
-    this.shadowRoot.getElementById("pause").addEventListener("click", () => this._call("vacuum", "pause", { entity_id: this._config.entity }));
-    this.shadowRoot.getElementById("locate").addEventListener("click", () => this._call("vacuum", "locate", { entity_id: this._config.entity }));
-    const fanWrap = this.shadowRoot.getElementById("fan");
-    this._config.fans.forEach(([val, lbl]) => { const b = document.createElement("button"); b.dataset.v = val; b.textContent = lbl;
-      b.addEventListener("click", () => this._call("vacuum", "set_fan_speed", { entity_id: this._config.entity, fan_speed: val })); fanWrap.appendChild(b); });
-    const scrubWrap = this.shadowRoot.getElementById("scrub");
-    if (this._config.scrub_entity) this._config.scrubs.forEach(([val, lbl]) => { const b = document.createElement("button"); b.dataset.v = val; b.textContent = lbl;
-      b.addEventListener("click", () => this._call("select", "select_option", { entity_id: this._config.scrub_entity, option: val })); scrubWrap.appendChild(b); });
-    else { this.shadowRoot.getElementById("scrub").style.display = "none"; this.shadowRoot.getElementById("scrublbl").style.display = "none"; }
-    const roomsWrap = this.shadowRoot.getElementById("rooms");
-    (this._config.rooms || []).forEach((r) => { const segs = r.segments || (r.segment != null ? [r.segment] : []); const b = document.createElement("button"); b.className = "vm-chip";
-      b.innerHTML = `<ha-icon icon="${r.icon || "mdi:floor-plan"}"></ha-icon>${r.name}`;
-      b.addEventListener("click", () => this._call("vacuum", "send_command", { entity_id: this._config.entity, command: "app_segment_clean", params: segs })); roomsWrap.appendChild(b); });
-    const dockWrap = this.shadowRoot.getElementById("dock");
-    (this._config.dock || []).forEach((d) => { const el = document.createElement("span"); el.className = "vm-di"; el.dataset.e = d.entity; el.dataset.good = d.good || "off";
-      el.innerHTML = `<span class="d"></span>${d.label}`; dockWrap.appendChild(el); });
+    SR.getElementById("pause").addEventListener("click", () => this._call("vacuum", "pause", { entity_id: ent }));
+    SR.getElementById("locate").addEventListener("click", () => this._call("vacuum", "locate", { entity_id: ent }));
+    const fanWrap = SR.getElementById("fan");
+    c.fans.forEach(([val, lbl]) => { const b = document.createElement("button"); b.dataset.v = val; b.textContent = lbl;
+      b.addEventListener("click", () => this._call("vacuum", "set_fan_speed", { entity_id: ent, fan_speed: val })); fanWrap.appendChild(b); });
+    const scrubWrap = SR.getElementById("scrub");
+    if (c.scrub_entity) c.scrubs.forEach(([val, lbl]) => { const b = document.createElement("button"); b.dataset.v = val; b.textContent = lbl;
+      b.addEventListener("click", () => this._call("select", "select_option", { entity_id: c.scrub_entity, option: val })); scrubWrap.appendChild(b); });
+    else { SR.getElementById("scrub").style.display = "none"; SR.getElementById("scrublbl").style.display = "none"; }
+    // popups open/close
+    SR.getElementById("openrooms").addEventListener("click", () => this._modal("m-rooms", true));
+    SR.getElementById("openset").addEventListener("click", () => { this._buildSettings(); this._modal("m-set", true); });
+    SR.getElementById("x-rooms").addEventListener("click", () => this._modal("m-rooms", false));
+    SR.getElementById("x-set").addEventListener("click", () => this._modal("m-set", false));
+    ["m-rooms", "m-set"].forEach((id) => SR.getElementById(id).addEventListener("click", (e) => { if (e.target.id === id) this._modal(id, false); }));
+    // room tiles
+    const rg = SR.getElementById("rgrid");
+    (c.rooms || []).forEach((r) => { const segs = r.segments || (r.segment != null ? [r.segment] : []); const b = document.createElement("button"); b.className = "vm-rt";
+      b.innerHTML = `<span class="rc"><ha-icon icon="${r.icon || "mdi:floor-plan"}"></ha-icon></span>${r.name}`;
+      b.addEventListener("click", () => { this._call("vacuum", "send_command", { entity_id: ent, command: "app_segment_clean", params: [segs] }); this._modal("m-rooms", false); }); rg.appendChild(b); });
+    SR.getElementById("allrooms").addEventListener("click", () => { this._call("vacuum", "start", { entity_id: ent }); this._modal("m-rooms", false); });
+    // dock status cards
+    const dockWrap = SR.getElementById("dock");
+    (c.dock || []).forEach((d) => { const el = document.createElement("div"); el.className = "vm-dc"; el.dataset.e = d.entity; el.dataset.good = d.good || "off";
+      el.dataset.ok = d.ok_text || "OK"; el.dataset.warn = d.warn_text || "Attention";
+      el.innerHTML = `<span class="ic"><ha-icon icon="${d.icon || "mdi:water"}"></ha-icon></span><div><div class="l">${d.label}</div><div class="v">—</div></div>`; dockWrap.appendChild(el); });
+  }
+  _buildSettings() {
+    const body = this.shadowRoot.getElementById("setbody"); if (!body || body._done) return; body._done = true;
+    (this._config.settings || []).forEach((s) => {
+      const st = this._hass.states[s.entity]; if (!st) return; const dom = s.entity.split(".")[0];
+      const row = document.createElement("div"); row.className = "vm-srow";
+      row.innerHTML = `<div class="sl"><ha-icon icon="${s.icon || "mdi:cog"}"></ha-icon>${s.label || st.attributes.friendly_name || s.entity}</div>`;
+      if (dom === "select") {
+        const wrap = document.createElement("div"); wrap.className = "vm-opts";
+        (st.attributes.options || []).forEach((o) => { const b = document.createElement("button"); b.className = "vm-opt"; b.dataset.e = s.entity; b.dataset.v = o;
+          b.textContent = (s.labels && s.labels[o]) || o; b.addEventListener("click", () => this._call("select", "select_option", { entity_id: s.entity, option: o })); wrap.appendChild(b); });
+        row.appendChild(wrap);
+      } else if (dom === "switch") {
+        const b = document.createElement("button"); b.className = "vm-tog"; b.dataset.e = s.entity; b.textContent = "—";
+        b.addEventListener("click", () => this._call("switch", "toggle", { entity_id: s.entity })); row.appendChild(b);
+      } else if (dom === "number") {
+        const wrap = document.createElement("div"); wrap.className = "vm-rng";
+        const inp = document.createElement("input"); inp.type = "range"; inp.dataset.e = s.entity;
+        inp.min = st.attributes.min != null ? st.attributes.min : 0; inp.max = st.attributes.max != null ? st.attributes.max : 100; inp.step = st.attributes.step || 1;
+        const v = document.createElement("span"); v.className = "rv"; v.dataset.ev = s.entity;
+        inp.addEventListener("change", () => this._call("number", "set_value", { entity_id: s.entity, value: parseFloat(inp.value) }));
+        inp.addEventListener("input", () => { v.textContent = inp.value; }); wrap.appendChild(inp); wrap.appendChild(v); row.appendChild(wrap);
+      } else {
+        const d = document.createElement("div"); d.className = "vm-opt on"; d.style.cursor = "default"; d.dataset.disp = s.entity; d.textContent = "—"; row.appendChild(d);
+      }
+      body.appendChild(row);
+    });
+    this._syncSettings();
+  }
+  _syncSettings() {
+    const SR = this.shadowRoot;
+    SR.querySelectorAll(".vm-opt[data-e]").forEach((b) => { const st = this._hass.states[b.dataset.e]; b.classList.toggle("on", st && st.state === b.dataset.v); });
+    SR.querySelectorAll(".vm-tog[data-e]").forEach((b) => { const st = this._hass.states[b.dataset.e]; const on = st && st.state === "on"; b.classList.toggle("on", on); b.textContent = on ? "Activé" : "Désactivé"; });
+    SR.querySelectorAll("input[data-e]").forEach((inp) => { const st = this._hass.states[inp.dataset.e]; if (st && document.activeElement !== inp) inp.value = st.state; });
+    SR.querySelectorAll(".rv[data-ev]").forEach((v) => { const st = this._hass.states[v.dataset.ev]; if (st) v.textContent = st.state; });
+    SR.querySelectorAll("[data-disp]").forEach((d) => { const st = this._hass.states[d.dataset.disp]; if (st) d.textContent = st.state; });
   }
   _paintMap() {
     const me = this._config.map_entity, s = me && this._hass.states[me]; const img = this.shadowRoot && this.shadowRoot.getElementById("map");
@@ -1346,27 +1445,24 @@ class JmaVacuumProCard extends HTMLElement {
     const room = (st === "cleaning" && area && !jmaUnavail(area)) ? " · " + area.state : "";
     this.shadowRoot.getElementById("stxt").textContent = (VACUUM_FR[st] || st) + room;
     this.shadowRoot.getElementById("state").classList.toggle("run", running);
-    // stats
     this.shadowRoot.getElementById("sv").textContent = this._fmt(this._num(this._config.surface_entity), " m²");
     const dur = this._num(this._config.duration_entity);
     this.shadowRoot.getElementById("dv").textContent = dur == null ? "—" : Math.round(dur) + " min";
     const tot = this._num(this._config.total_entity);
     this.shadowRoot.getElementById("tv").textContent = tot == null ? "—" : Math.round(tot);
-    // batterie
     const bv = this._num(this._config.battery_entity);
     const ring = this.shadowRoot.getElementById("bring");
     if (bv != null) { ring.style.strokeDashoffset = (188.5 * (1 - bv / 100)).toFixed(1); this.shadowRoot.getElementById("bpc").textContent = Math.round(bv) + "%"; }
-    // bouton principal
     const cleaning = st === "cleaning";
     this.shadowRoot.getElementById("ptxt").textContent = cleaning ? "Retour base" : "Démarrer";
     this.shadowRoot.getElementById("pic").setAttribute("icon", cleaning ? "mdi:home-import-outline" : "mdi:play");
-    // segments actifs
     this.shadowRoot.querySelectorAll("#fan button").forEach((b) => b.classList.toggle("on", b.dataset.v === a.fan_speed));
     const sc = this._config.scrub_entity && this._hass.states[this._config.scrub_entity];
     this.shadowRoot.querySelectorAll("#scrub button").forEach((b) => b.classList.toggle("on", sc && b.dataset.v === sc.state));
-    // dock
-    this.shadowRoot.querySelectorAll(".vm-di").forEach((el) => { const ds = this._hass.states[el.dataset.e];
-      const ok = ds && ds.state === el.dataset.good; el.classList.toggle("warn", !ok); });
+    this.shadowRoot.querySelectorAll(".vm-dc").forEach((el) => { const ds = this._hass.states[el.dataset.e];
+      const ok = ds && ds.state === el.dataset.good; el.classList.toggle("warn", !ok);
+      const vv = el.querySelector(".v"); if (vv) vv.textContent = ok ? el.dataset.ok : el.dataset.warn; });
+    this._syncSettings();
     this._paintMap();
   }
 }
