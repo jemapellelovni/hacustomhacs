@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.97.0";
+const VERSION = "0.98.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1238,7 +1238,7 @@ class JmaVacuumProCard extends HTMLElement {
   _build() {
     const c = this._config;
     this.shadowRoot.innerHTML = `<style>
-      :host{display:block;height:100%;}*{box-sizing:border-box;}
+      :host{display:block;}*{box-sizing:border-box;}
       .vm{display:grid;grid-template-columns:1.35fr 1fr;grid-template-rows:auto minmax(0,1fr) auto;gap:12px;height:100%;min-height:0;color:#3a3128;
         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
       .vc{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.72);border-radius:28px;
@@ -1310,6 +1310,7 @@ class JmaVacuumProCard extends HTMLElement {
         </div>
         <div class="vc vm-rooms"><span class="vm-rl">Nettoyer</span><span id="rooms" style="display:contents"></span><div class="vm-dock" id="dock"></div></div>
       </div>`;
+    if (c.panel) { const g = c.bottom_gap != null ? c.bottom_gap : 90; this.style.cssText = `position:fixed;top:8px;left:12px;right:12px;bottom:${g}px;overflow:hidden;z-index:1;`; }
     this.shadowRoot.getElementById("primary").addEventListener("click", () => {
       const st = this._st(); const cleaning = st && st.state === "cleaning";
       this._call("vacuum", cleaning ? "return_to_base" : "start", { entity_id: this._config.entity });
