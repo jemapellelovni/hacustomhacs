@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "1.0.1";
+const VERSION = "1.1.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1510,56 +1510,57 @@ class JmaVacuumHeroCard extends HTMLElement {
       .vh{position:absolute;inset:0;border-radius:30px;overflow:hidden;color:#fff;
         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
         background:radial-gradient(120% 90% at 80% 10%,#241b2e 0%,#171320 45%,#0c0a12 100%);}
-      /* map layer */
-      .vh-map{position:absolute;inset:0;}
-      .vh-map img{width:100%;height:100%;object-fit:cover;filter:saturate(1.05) contrast(1.02);}
-      .vh-grid{position:absolute;inset:0;opacity:.5;
+      /* map layer (zoomable) */
+      .vh-map{position:absolute;inset:0;touch-action:none;cursor:grab;}
+      .vh-map.zoomed{cursor:grab;}.vh-map.drag{cursor:grabbing;}
+      .vh-map img{width:100%;height:100%;object-fit:cover;filter:saturate(1.05) contrast(1.02);
+        transform:translate(0px,0px) scale(1);transform-origin:center center;transition:transform .12s ease-out;will-change:transform;}
+      .vh-grid{position:absolute;inset:0;opacity:.5;pointer-events:none;
         background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
         background-size:46px 46px;mask:radial-gradient(120% 100% at 50% 40%,#000 30%,transparent 80%);-webkit-mask:radial-gradient(120% 100% at 50% 40%,#000 30%,transparent 80%);}
-      .vh-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,10,18,.55) 0%,rgba(12,10,18,.06) 26%,rgba(12,10,18,.12) 60%,rgba(12,10,18,.78) 100%);}
-      /* radar sweep (cleaning only) */
-      .vh-radar{position:absolute;left:50%;top:46%;width:0;height:0;opacity:0;transition:opacity .5s;z-index:1;}
+      .vh-veil{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(12,10,18,.55) 0%,rgba(12,10,18,.06) 26%,rgba(12,10,18,.12) 60%,rgba(12,10,18,.78) 100%);}
+      /* zoom controls */
+      .vh-zoom{position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:4;}
+      .vh-zb{width:46px;height:46px;border:none;cursor:pointer;border-radius:15px;display:flex;align-items:center;justify-content:center;
+        background:rgba(28,24,38,.5);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
+      .vh-zb:active{transform:scale(.92);}.vh-zb ha-icon{--mdc-icon-size:22px;color:#fff;}
+      .vh-zb.rst{opacity:0;transition:opacity .25s;pointer-events:none;}.vh-map.zoomed ~ .vh-zoom .vh-zb.rst{opacity:1;pointer-events:auto;}
+      /* radar sweep — calm, slow & faint (cleaning only) */
+      .vh-radar{position:absolute;left:50%;top:46%;width:0;height:0;opacity:0;transition:opacity 1s;z-index:1;pointer-events:none;}
       .vh.run .vh-radar{opacity:1;}
-      .vh-radar::before{content:"";position:absolute;left:-180px;top:-180px;width:360px;height:360px;border-radius:50%;
-        background:conic-gradient(from 0deg,rgba(64,196,255,.34),rgba(64,196,255,0) 38%);animation:vh-sweep 2.6s linear infinite;}
-      .vh-radar::after{content:"";position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;background:#40c4ff;box-shadow:0 0 22px 6px rgba(64,196,255,.7);}
+      .vh-radar::before{content:"";position:absolute;left:-150px;top:-150px;width:300px;height:300px;border-radius:50%;
+        background:conic-gradient(from 0deg,rgba(64,196,255,.14),rgba(64,196,255,0) 42%);animation:vh-sweep 7s linear infinite;}
+      .vh-radar::after{content:"";position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:rgba(64,196,255,.7);box-shadow:0 0 14px 3px rgba(64,196,255,.4);}
       @keyframes vh-sweep{to{transform:rotate(360deg);}}
-      /* extra "live" animations — only while running */
-      .vh-fx{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .6s;}
+      /* roaming robot puck — slow & soft (cleaning only) */
+      .vh-fx{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity 1s;}
       .vh.run .vh-fx{opacity:1;}
-      /* horizontal scan line crossing the map */
-      .vh-scan{position:absolute;left:0;right:0;height:140px;top:-140px;
-        background:linear-gradient(180deg,rgba(64,196,255,0),rgba(64,196,255,.16) 70%,rgba(120,230,255,.5));
-        border-bottom:2px solid rgba(150,235,255,.8);box-shadow:0 0 30px rgba(64,196,255,.4);}
-      .vh.run .vh-scan{animation:vh-scanmove 3.4s cubic-bezier(.45,0,.55,1) infinite;}
-      @keyframes vh-scanmove{0%{top:-140px}50%{top:100%}50.01%{top:100%}100%{top:-140px}}
-      /* roaming robot puck tracing a path */
-      .vh-bot{position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;
-        background:radial-gradient(circle,#bff3ff,#40c4ff 60%,#1f8fd0);box-shadow:0 0 16px 5px rgba(64,196,255,.65);}
-      .vh-bot::after{content:"";position:absolute;inset:-10px;border-radius:50%;border:2px solid rgba(64,196,255,.45);animation:vh-ping 1.6s ease-out infinite;}
-      .vh.run .vh-bot{animation:vh-roam 11s ease-in-out infinite;}
-      @keyframes vh-ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.8);opacity:0}}
+      .vh-bot{position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;
+        background:radial-gradient(circle,#cdf3ff,#40c4ff 62%,#2a8fc4);box-shadow:0 0 12px 3px rgba(64,196,255,.4);}
+      .vh-bot::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:1.5px solid rgba(64,196,255,.3);animation:vh-ping 3s ease-out infinite;}
+      .vh.run .vh-bot{animation:vh-roam 26s ease-in-out infinite;}
+      @keyframes vh-ping{0%{transform:scale(.7);opacity:.6}100%{transform:scale(1.5);opacity:0}}
       @keyframes vh-roam{
         0%{left:22%;top:34%}14%{left:62%;top:30%}28%{left:74%;top:60%}42%{left:46%;top:70%}
         56%{left:24%;top:66%}70%{left:30%;top:40%}84%{left:54%;top:48%}100%{left:22%;top:34%}}
-      /* breathing ambient glow ring inside the panel */
-      .vh-aura{position:absolute;inset:0;border-radius:30px;box-shadow:inset 0 0 0 0 rgba(64,196,255,0);}
-      .vh.run .vh-aura{animation:vh-breathe 3.2s ease-in-out infinite;}
-      @keyframes vh-breathe{0%,100%{box-shadow:inset 0 0 60px 2px rgba(64,196,255,.06)}50%{box-shadow:inset 0 0 90px 6px rgba(64,196,255,.20)}}
-      /* avatar comes alive */
-      .vh.run .vh-av{animation:vh-bob 2.2s ease-in-out infinite;}
-      @keyframes vh-bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-3px) rotate(3deg)}}
-      .vh.run .vh-av{box-shadow:0 8px 26px rgba(248,165,194,.4),0 0 0 0 rgba(248,165,194,.5);}
-      /* animated "working" dots after status text */
+      /* breathing ambient glow — very subtle (cleaning only) */
+      .vh-aura{position:absolute;inset:0;border-radius:30px;pointer-events:none;box-shadow:inset 0 0 0 0 rgba(64,196,255,0);}
+      .vh.run .vh-aura{animation:vh-breathe 6s ease-in-out infinite;}
+      @keyframes vh-breathe{0%,100%{box-shadow:inset 0 0 50px 0 rgba(64,196,255,.04)}50%{box-shadow:inset 0 0 70px 3px rgba(64,196,255,.10)}}
+      /* avatar gentle pulse */
+      .vh.run .vh-av{animation:vh-bob 3.4s ease-in-out infinite;}
+      @keyframes vh-bob{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+      /* "working" dots after status text */
       .vh-dots{display:none;}.vh.run .vh-dots{display:inline-flex;gap:3px;margin-left:5px;}
-      .vh-dots i{width:4px;height:4px;border-radius:50%;background:#36e07f;animation:vh-dot 1.2s ease-in-out infinite;}
-      .vh-dots i:nth-child(2){animation-delay:.2s}.vh-dots i:nth-child(3){animation-delay:.4s}
-      @keyframes vh-dot{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
-      /* primary CTA shimmer while running */
-      .vh.run .vh-cta{position:relative;overflow:hidden;}
-      .vh.run .vh-cta::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;
-        background:linear-gradient(105deg,rgba(255,255,255,0),rgba(255,255,255,.5),rgba(255,255,255,0));animation:vh-shine 2.8s ease-in-out infinite;}
-      @keyframes vh-shine{0%{left:-60%}55%{left:130%}100%{left:130%}}
+      .vh-dots i{width:4px;height:4px;border-radius:50%;background:#36e07f;animation:vh-dot 1.8s ease-in-out infinite;}
+      .vh-dots i:nth-child(2){animation-delay:.25s}.vh-dots i:nth-child(3){animation-delay:.5s}
+      @keyframes vh-dot{0%,100%{opacity:.3}50%{opacity:1}}
+      /* live "en cours" highlight on current-session stats */
+      .vh-stat{position:relative;}
+      .vh-stat.live{border-color:rgba(64,224,160,.45)!important;}
+      .vh-stat.live .v{color:#5fe8a4;}
+      .vh-stat.live::after{content:"";position:absolute;top:7px;right:8px;width:7px;height:7px;border-radius:50%;background:#36e07f;animation:vh-livedot 2s ease-out infinite;}
+      @keyframes vh-livedot{0%{box-shadow:0 0 0 0 rgba(54,224,127,.5)}70%{box-shadow:0 0 0 6px rgba(54,224,127,0)}100%{box-shadow:0 0 0 0 rgba(54,224,127,0)}}
       /* glass */
       .g{background:rgba(28,24,38,.42);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2);
         box-shadow:0 16px 50px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.14);}
@@ -1643,20 +1644,25 @@ class JmaVacuumHeroCard extends HTMLElement {
       }
     </style>
       <div class="vh" id="vh">
-        <div class="vh-map"><img id="map" hidden></div>
+        <div class="vh-map" id="mapwrap"><img id="map" hidden></div>
         <div class="vh-grid" id="gridbg"></div>
         <div class="vh-veil"></div>
-        <div class="vh-fx"><div class="vh-scan"></div><div class="vh-bot"></div></div>
+        <div class="vh-fx"><div class="vh-bot"></div></div>
         <div class="vh-aura"></div>
         <div class="vh-radar"></div>
+        <div class="vh-zoom">
+          <button class="vh-zb" id="zin"><ha-icon icon="mdi:plus"></ha-icon></button>
+          <button class="vh-zb" id="zout"><ha-icon icon="mdi:minus"></ha-icon></button>
+          <button class="vh-zb rst" id="zrst"><ha-icon icon="mdi:image-filter-center-focus"></ha-icon></button>
+        </div>
         <div class="g vh-id">
           <div class="vh-av"><ha-icon id="sic" icon="mdi:robot-vacuum"></ha-icon></div>
           <div><div class="vh-nm">${c.name}</div><div class="vh-stt"><span class="dot"></span><span id="stxt">—</span><span class="vh-dots"><i></i><i></i><i></i></span></div></div>
         </div>
         <div class="vh-tr">
           <div class="vh-stats">
-            <div class="g vh-stat"><div class="v" id="sv">—</div><div class="l">Surface</div></div>
-            <div class="g vh-stat"><div class="v" id="dv">—</div><div class="l">Durée</div></div>
+            <div class="g vh-stat" id="stat-s"><div class="v" id="sv">—</div><div class="l">Surface</div></div>
+            <div class="g vh-stat" id="stat-d"><div class="v" id="dv">—</div><div class="l">Durée</div></div>
             <div class="g vh-stat"><div class="v" id="tv">—</div><div class="l">Total</div></div>
           </div>
           <div class="g vh-bat"><svg width="78" height="78"><circle cx="39" cy="39" r="33" stroke="rgba(255,255,255,.14)" stroke-width="7" fill="none"/>
@@ -1707,6 +1713,33 @@ class JmaVacuumHeroCard extends HTMLElement {
     (c.dock || []).forEach((d) => { const el = document.createElement("div"); el.className = "g vh-dc"; el.dataset.e = d.entity; el.dataset.good = d.good || "off";
       el.dataset.ok = d.ok_text || "OK"; el.dataset.warn = d.warn_text || "Attention";
       el.innerHTML = `<span class="ic"><ha-icon icon="${d.icon || "mdi:water"}"></ha-icon></span><div><div class="l">${d.label}</div><div class="v">—</div></div>`; dockWrap.appendChild(el); });
+    this._initZoom();
+  }
+  _initZoom() {
+    const SR = this.shadowRoot, wrap = SR.getElementById("mapwrap"), img = SR.getElementById("map");
+    if (!wrap || !img) return;
+    let scale = 1, tx = 0, ty = 0; const ptrs = new Map(); let sDist = 0, sScale = 1, panFrom = null;
+    const MAX = 4.5;
+    const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; wrap.classList.toggle("zoomed", scale > 1.01); };
+    const clampPan = () => { const r = wrap.getBoundingClientRect(); const mx = (scale - 1) * r.width / 2, my = (scale - 1) * r.height / 2;
+      tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty)); };
+    const zoom = (f) => { scale = Math.max(1, Math.min(MAX, scale * f)); if (scale === 1) { tx = 0; ty = 0; } else clampPan(); apply(); };
+    const reset = () => { scale = 1; tx = 0; ty = 0; apply(); };
+    wrap.addEventListener("wheel", (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 0.87); }, { passive: false });
+    wrap.addEventListener("pointerdown", (e) => { wrap.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 1) { panFrom = { x: e.clientX - tx, y: e.clientY - ty }; }
+      if (ptrs.size === 2) { const p = [...ptrs.values()]; sDist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); sScale = scale; } });
+    wrap.addEventListener("pointermove", (e) => { if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const p = [...ptrs.values()];
+      if (ptrs.size === 2) { const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); if (sDist) { scale = Math.max(1, Math.min(MAX, sScale * (d / sDist))); clampPan(); apply(); } }
+      else if (ptrs.size === 1 && scale > 1.01 && panFrom) { wrap.classList.add("drag"); tx = e.clientX - panFrom.x; ty = e.clientY - panFrom.y; clampPan(); apply(); } });
+    const end = (e) => { ptrs.delete(e.pointerId); wrap.classList.remove("drag"); if (ptrs.size < 2) sDist = 0;
+      if (ptrs.size === 1) { const p = [...ptrs.values()][0]; panFrom = { x: p.x - tx, y: p.y - ty }; } if (scale === 1) reset(); };
+    wrap.addEventListener("pointerup", end); wrap.addEventListener("pointercancel", end);
+    wrap.addEventListener("dblclick", reset);
+    SR.getElementById("zin").addEventListener("click", () => zoom(1.4));
+    SR.getElementById("zout").addEventListener("click", () => zoom(0.7));
+    SR.getElementById("zrst").addEventListener("click", reset);
   }
   _buildSettings() {
     const body = this.shadowRoot.getElementById("setbody"); if (!body || body._done) return; body._done = true;
@@ -1754,6 +1787,8 @@ class JmaVacuumHeroCard extends HTMLElement {
     const s = this._st(); if (!s) return; const st = s.state;
     const running = st === "cleaning" || st === "returning";
     this.shadowRoot.getElementById("vh").classList.toggle("run", running);
+    const ss = this.shadowRoot.getElementById("stat-s"), sd = this.shadowRoot.getElementById("stat-d");
+    if (ss) ss.classList.toggle("live", running); if (sd) sd.classList.toggle("live", running);
     this.shadowRoot.getElementById("sic").setAttribute("icon", running ? "mdi:robot-vacuum-variant" : "mdi:robot-vacuum");
     const area = this._config.area_entity && this._hass.states[this._config.area_entity];
     const room = (st === "cleaning" && area && !jmaUnavail(area)) ? " · " + area.state : "";
