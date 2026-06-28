@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1718,27 +1718,35 @@ class JmaVacuumHeroCard extends HTMLElement {
   _initZoom() {
     const SR = this.shadowRoot, wrap = SR.getElementById("mapwrap"), img = SR.getElementById("map");
     if (!wrap || !img) return;
-    let scale = 1, tx = 0, ty = 0; const ptrs = new Map(); let sDist = 0, sScale = 1, panFrom = null;
-    const MAX = 4.5;
+    let scale = 1, tx = 0, ty = 0; const MAX = 5, MIN = 1;
     const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; wrap.classList.toggle("zoomed", scale > 1.01); };
     const clampPan = () => { const r = wrap.getBoundingClientRect(); const mx = (scale - 1) * r.width / 2, my = (scale - 1) * r.height / 2;
       tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty)); };
-    const zoom = (f) => { scale = Math.max(1, Math.min(MAX, scale * f)); if (scale === 1) { tx = 0; ty = 0; } else clampPan(); apply(); };
+    const setScale = (v) => { scale = Math.max(MIN, Math.min(MAX, v)); if (scale === 1) { tx = 0; ty = 0; } else clampPan(); apply(); };
+    const zoom = (f) => setScale(scale * f);
     const reset = () => { scale = 1; tx = 0; ty = 0; apply(); };
+    const D = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    // --- touch (tablette) : pincer + glisser ---
+    let sDist = 0, sScale = 1, panning = false, lx = 0, ly = 0;
+    wrap.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) { sDist = D(e.touches); sScale = scale; panning = false; e.preventDefault(); }
+      else if (e.touches.length === 1 && scale > 1.01) { panning = true; lx = e.touches[0].clientX; ly = e.touches[0].clientY; }
+    }, { passive: false });
+    wrap.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 2 && sDist) { setScale(sScale * (D(e.touches) / sDist)); e.preventDefault(); }
+      else if (e.touches.length === 1 && panning) { const t = e.touches[0]; tx += t.clientX - lx; ty += t.clientY - ly; lx = t.clientX; ly = t.clientY; clampPan(); apply(); e.preventDefault(); }
+    }, { passive: false });
+    wrap.addEventListener("touchend", (e) => { if (e.touches.length < 2) sDist = 0; if (e.touches.length === 0) { panning = false; if (scale === 1) reset(); } });
+    // --- souris (desktop) : molette + glisser ---
     wrap.addEventListener("wheel", (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 0.87); }, { passive: false });
-    wrap.addEventListener("pointerdown", (e) => { wrap.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (ptrs.size === 1) { panFrom = { x: e.clientX - tx, y: e.clientY - ty }; }
-      if (ptrs.size === 2) { const p = [...ptrs.values()]; sDist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); sScale = scale; } });
-    wrap.addEventListener("pointermove", (e) => { if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      const p = [...ptrs.values()];
-      if (ptrs.size === 2) { const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); if (sDist) { scale = Math.max(1, Math.min(MAX, sScale * (d / sDist))); clampPan(); apply(); } }
-      else if (ptrs.size === 1 && scale > 1.01 && panFrom) { wrap.classList.add("drag"); tx = e.clientX - panFrom.x; ty = e.clientY - panFrom.y; clampPan(); apply(); } });
-    const end = (e) => { ptrs.delete(e.pointerId); wrap.classList.remove("drag"); if (ptrs.size < 2) sDist = 0;
-      if (ptrs.size === 1) { const p = [...ptrs.values()][0]; panFrom = { x: p.x - tx, y: p.y - ty }; } if (scale === 1) reset(); };
-    wrap.addEventListener("pointerup", end); wrap.addEventListener("pointercancel", end);
+    let mdown = false, mx0 = 0, my0 = 0;
+    wrap.addEventListener("mousedown", (e) => { if (scale <= 1.01) return; mdown = true; mx0 = e.clientX; my0 = e.clientY; wrap.classList.add("drag"); e.preventDefault(); });
+    window.addEventListener("mousemove", (e) => { if (!mdown) return; tx += e.clientX - mx0; ty += e.clientY - my0; mx0 = e.clientX; my0 = e.clientY; clampPan(); apply(); });
+    window.addEventListener("mouseup", () => { mdown = false; wrap.classList.remove("drag"); });
     wrap.addEventListener("dblclick", reset);
+    // --- boutons ---
     SR.getElementById("zin").addEventListener("click", () => zoom(1.4));
-    SR.getElementById("zout").addEventListener("click", () => zoom(0.7));
+    SR.getElementById("zout").addEventListener("click", () => zoom(0.72));
     SR.getElementById("zrst").addEventListener("click", reset);
   }
   _buildSettings() {
