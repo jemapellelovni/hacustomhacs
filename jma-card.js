@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "1.1.1";
+const VERSION = "1.1.2";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1718,11 +1718,11 @@ class JmaVacuumHeroCard extends HTMLElement {
   _initZoom() {
     const SR = this.shadowRoot, wrap = SR.getElementById("mapwrap"), img = SR.getElementById("map");
     if (!wrap || !img) return;
-    let scale = 1, tx = 0, ty = 0; const MAX = 5, MIN = 1;
-    const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; wrap.classList.toggle("zoomed", scale > 1.01); };
+    let scale = 1, tx = 0, ty = 0; const MAX = 5, MIN = 0.5;
+    const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`; wrap.classList.toggle("zoomed", Math.abs(scale - 1) > 0.01); };
     const clampPan = () => { const r = wrap.getBoundingClientRect(); const mx = (scale - 1) * r.width / 2, my = (scale - 1) * r.height / 2;
       tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty)); };
-    const setScale = (v) => { scale = Math.max(MIN, Math.min(MAX, v)); if (scale === 1) { tx = 0; ty = 0; } else clampPan(); apply(); };
+    const setScale = (v) => { scale = Math.max(MIN, Math.min(MAX, v)); if (scale <= 1) { tx = 0; ty = 0; } else clampPan(); apply(); };
     const zoom = (f) => setScale(scale * f);
     const reset = () => { scale = 1; tx = 0; ty = 0; apply(); };
     const D = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
