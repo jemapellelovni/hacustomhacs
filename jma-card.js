@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "0.99.1";
+const VERSION = "1.0.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -1482,6 +1482,262 @@ class JmaVacuumProCard extends HTMLElement {
   }
 }
 jmaDef("jma-vacuum-pro-card", JmaVacuumProCard);
+
+// =============================================================================
+//  🛸 ASPIRATEUR "HERO" — carte immersive : map plein écran + HUD flottant
+// =============================================================================
+class JmaVacuumHeroCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) {
+    if (!c.entity) throw new Error("aspirateur : 'entity' requis");
+    this._config = { color: ROSE, accent: BEIGE, name: "Aspirateur",
+      fans: [["quiet", "Silence"], ["balanced", "Éco"], ["turbo", "Turbo"], ["max", "Max"], ["max_plus", "Max+"]],
+      scrubs: [["low", "Léger"], ["medium", "Moyen"], ["extreme", "Intense"]], rooms: [], dock: [], settings: [], ...c };
+  }
+  getCardSize() { return 12; }
+  static getStubConfig() { return { entity: "vacuum.example", map_entity: "image.example" }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update();
+    if (!this._mapTimer) this._mapTimer = setInterval(() => this._paintMap(), 8000); }
+  disconnectedCallback() { clearInterval(this._mapTimer); this._mapTimer = null; }
+  _call(d, s, data) { this._hass.callService(d, s, data); }
+  _st() { return this._hass && this._hass.states[this._config.entity]; }
+  _num(ent) { const s = ent && this._hass.states[ent]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
+  _modal(id, on) { const m = this.shadowRoot.getElementById(id); if (m) m.classList.toggle("open", on); }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>
+      :host{display:block;}*{box-sizing:border-box;}
+      .vh{position:absolute;inset:0;border-radius:30px;overflow:hidden;color:#fff;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        background:radial-gradient(120% 90% at 80% 10%,#241b2e 0%,#171320 45%,#0c0a12 100%);}
+      /* map layer */
+      .vh-map{position:absolute;inset:0;}
+      .vh-map img{width:100%;height:100%;object-fit:cover;filter:saturate(1.05) contrast(1.02);}
+      .vh-grid{position:absolute;inset:0;opacity:.5;
+        background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
+        background-size:46px 46px;mask:radial-gradient(120% 100% at 50% 40%,#000 30%,transparent 80%);-webkit-mask:radial-gradient(120% 100% at 50% 40%,#000 30%,transparent 80%);}
+      .vh-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,10,18,.55) 0%,rgba(12,10,18,.06) 26%,rgba(12,10,18,.12) 60%,rgba(12,10,18,.78) 100%);}
+      /* radar sweep (cleaning only) */
+      .vh-radar{position:absolute;left:50%;top:46%;width:0;height:0;opacity:0;transition:opacity .5s;z-index:1;}
+      .vh.run .vh-radar{opacity:1;}
+      .vh-radar::before{content:"";position:absolute;left:-180px;top:-180px;width:360px;height:360px;border-radius:50%;
+        background:conic-gradient(from 0deg,rgba(64,196,255,.34),rgba(64,196,255,0) 38%);animation:vh-sweep 2.6s linear infinite;}
+      .vh-radar::after{content:"";position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;background:#40c4ff;box-shadow:0 0 22px 6px rgba(64,196,255,.7);}
+      @keyframes vh-sweep{to{transform:rotate(360deg);}}
+      /* glass */
+      .g{background:rgba(28,24,38,.42);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2);
+        box-shadow:0 16px 50px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.14);}
+      /* top-left identity */
+      .vh-id{position:absolute;top:20px;left:20px;display:flex;align-items:center;gap:14px;padding:13px 20px 13px 14px;border-radius:24px;z-index:3;}
+      .vh-av{width:54px;height:54px;border-radius:18px;flex:none;display:flex;align-items:center;justify-content:center;
+        background:linear-gradient(135deg,${c.color},${c.accent});box-shadow:0 8px 26px rgba(248,165,194,.4);}
+      .vh-av ha-icon{--mdc-icon-size:30px;color:#1a1018;}
+      .vh-nm{font-size:1.45rem;font-weight:850;letter-spacing:.2px;line-height:1.1;}
+      .vh-stt{display:inline-flex;align-items:center;gap:8px;margin-top:4px;font-size:.9rem;font-weight:650;color:rgba(255,255,255,.78);}
+      .vh-stt .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.5);}
+      .vh.run .vh-stt .dot{background:#36e07f;box-shadow:0 0 0 4px rgba(54,224,127,.22);animation:vh-bl 1.4s infinite;}
+      @keyframes vh-bl{50%{opacity:.35}}
+      /* top-right stats + battery */
+      .vh-tr{position:absolute;top:20px;right:20px;display:flex;align-items:center;gap:12px;z-index:3;}
+      .vh-stats{display:flex;gap:9px;}
+      .vh-stat{border-radius:18px;padding:11px 17px;text-align:center;min-width:88px;}
+      .vh-stat .v{font-size:1.2rem;font-weight:850;}.vh-stat .l{font-size:.66rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+      .vh-bat{position:relative;width:78px;height:78px;border-radius:24px;display:flex;align-items:center;justify-content:center;}
+      .vh-bat svg{position:absolute;inset:0;transform:rotate(-90deg);}
+      .vh-bat .pc{font-size:1.05rem;font-weight:850;}
+      /* dock status chips top-center */
+      .vh-dock{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:2;}
+      .vh-dc{display:flex;align-items:center;gap:9px;border-radius:16px;padding:9px 15px;font-size:.86rem;font-weight:750;}
+      .vh-dc .ic{width:26px;height:26px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(54,224,127,.2);}
+      .vh-dc .ic ha-icon{--mdc-icon-size:17px;color:#43e98a;}
+      .vh-dc .l{color:rgba(255,255,255,.66);font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:700;}
+      .vh-dc .v{font-size:.92rem;font-weight:800;color:#54e89a;}
+      .vh-dc.warn .ic{background:rgba(255,194,61,.22);}.vh-dc.warn .ic ha-icon{color:#ffc23d;}.vh-dc.warn .v{color:#ffce5e;}
+      /* bottom control bar */
+      .vh-bar{position:absolute;left:20px;right:20px;bottom:20px;display:flex;align-items:center;gap:13px;padding:15px;border-radius:28px;z-index:3;}
+      .vh-cta{display:flex;align-items:center;justify-content:center;gap:11px;border:none;cursor:pointer;min-width:230px;
+        background:linear-gradient(135deg,${c.color},${c.accent});color:#1a1018;border-radius:20px;padding:18px 26px;font-size:1.18rem;font-weight:900;box-shadow:0 12px 30px rgba(248,165,194,.4);}
+      .vh-cta:active{transform:scale(.98);}.vh-cta ha-icon{--mdc-icon-size:25px;}
+      .vh-rb{width:60px;height:60px;border:none;cursor:pointer;border-radius:20px;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);}
+      .vh-rb:active{transform:scale(.94);}.vh-rb ha-icon{--mdc-icon-size:25px;color:#fff;}
+      .vh-sep{width:1px;height:40px;background:rgba(255,255,255,.16);margin:0 3px;}
+      .vh-big{display:flex;align-items:center;gap:10px;border:none;cursor:pointer;border-radius:20px;padding:0 24px;height:60px;font-size:1.04rem;font-weight:850;color:#fff;
+        background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);}
+      .vh-big:active{transform:scale(.96);}.vh-big ha-icon{--mdc-icon-size:23px;color:${c.color};}
+      .vh-big.room{margin-left:auto;}
+      /* popups (reused) */
+      .vm-modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(10,8,14,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+      .vm-modal.open{display:flex;animation:vm-fi .18s ease;}
+      @keyframes vm-fi{from{opacity:0}to{opacity:1}}
+      .vm-sheet{width:min(94vw,760px);max-height:86vh;overflow:auto;border-radius:30px;padding:24px;color:#fff;
+        background:radial-gradient(120% 90% at 80% 0%,#2a2036,#15111e);border:1px solid rgba(255,255,255,.16);box-shadow:0 36px 90px rgba(0,0,0,.6);animation:vm-up .22s cubic-bezier(.2,.9,.3,1);}
+      @keyframes vm-up{from{transform:translateY(18px);opacity:.6}to{transform:translateY(0);opacity:1}}
+      .vm-sh{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+      .vm-sh .t{font-size:1.4rem;font-weight:900;}
+      .vm-sh .x{margin-left:auto;width:44px;height:44px;border:none;cursor:pointer;border-radius:14px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;}
+      .vm-sh .x ha-icon{--mdc-icon-size:24px;color:#fff;}
+      .vm-rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:13px;}
+      .vm-rt{display:flex;flex-direction:column;align-items:center;gap:10px;border:none;cursor:pointer;border-radius:22px;padding:22px 12px;font-size:1.02rem;font-weight:850;color:#fff;
+        background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);}
+      .vm-rt:active{transform:scale(.96);background:linear-gradient(135deg,${c.color},${c.accent});color:#1a1018;}
+      .vm-rt .rc{width:54px;height:54px;border-radius:17px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,${c.color},${c.accent});}
+      .vm-rt .rc ha-icon{--mdc-icon-size:29px;color:#1a1018;}
+      .vm-allr{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:15px;border:none;cursor:pointer;
+        background:linear-gradient(135deg,${c.color},${c.accent});color:#1a1018;border-radius:18px;padding:17px;font-size:1.05rem;font-weight:900;}
+      .vm-allr ha-icon{--mdc-icon-size:24px;}
+      .vm-set{display:flex;flex-direction:column;gap:18px;}
+      .vm-srow .sl{font-size:.84rem;font-weight:850;color:rgba(255,255,255,.78);margin-bottom:9px;display:flex;align-items:center;gap:8px;}
+      .vm-srow .sl ha-icon{--mdc-icon-size:20px;color:${c.color};}
+      .vm-opts{display:flex;gap:8px;flex-wrap:wrap;}
+      .vm-opt{border:none;cursor:pointer;border-radius:14px;padding:11px 18px;font-size:.92rem;font-weight:800;color:rgba(255,255,255,.82);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13);}
+      .vm-opt.on{background:linear-gradient(135deg,${c.color},${c.accent});color:#1a1018;}
+      .vm-opt:active{transform:scale(.95);}
+      .vm-tog{border:none;cursor:pointer;border-radius:14px;padding:11px 22px;font-size:.95rem;font-weight:850;background:rgba(255,255,255,.1);color:rgba(255,255,255,.82);}
+      .vm-tog.on{background:linear-gradient(135deg,#36e07f,#2faa52);color:#fff;}
+      .vm-rng{display:flex;align-items:center;gap:14px;}
+      .vm-rng input{flex:1;accent-color:${c.color};height:6px;}
+      .vm-rng .rv{font-size:1rem;font-weight:850;min-width:52px;text-align:right;}
+      @media (max-width:760px){
+        .vh-id{top:14px;left:14px;padding:10px 16px 10px 10px;}.vh-av{width:46px;height:46px;}.vh-nm{font-size:1.2rem;}
+        .vh-tr{position:static;}
+        .vh-dock{display:none;}
+        .vh-bar{flex-wrap:wrap;left:14px;right:14px;bottom:14px;}
+        .vh-cta{min-width:0;flex:1;}.vh-big.room{margin-left:0;}
+      }
+    </style>
+      <div class="vh" id="vh">
+        <div class="vh-map"><img id="map" hidden></div>
+        <div class="vh-grid" id="gridbg"></div>
+        <div class="vh-veil"></div>
+        <div class="vh-radar"></div>
+        <div class="g vh-id">
+          <div class="vh-av"><ha-icon id="sic" icon="mdi:robot-vacuum"></ha-icon></div>
+          <div><div class="vh-nm">${c.name}</div><div class="vh-stt"><span class="dot"></span><span id="stxt">—</span></div></div>
+        </div>
+        <div class="vh-tr">
+          <div class="vh-stats">
+            <div class="g vh-stat"><div class="v" id="sv">—</div><div class="l">Surface</div></div>
+            <div class="g vh-stat"><div class="v" id="dv">—</div><div class="l">Durée</div></div>
+            <div class="g vh-stat"><div class="v" id="tv">—</div><div class="l">Total</div></div>
+          </div>
+          <div class="g vh-bat"><svg width="78" height="78"><circle cx="39" cy="39" r="33" stroke="rgba(255,255,255,.14)" stroke-width="7" fill="none"/>
+            <circle id="bring" cx="39" cy="39" r="33" stroke="url(#vhg)" stroke-width="7" fill="none" stroke-linecap="round" stroke-dasharray="207.3" stroke-dashoffset="207.3"/>
+            <defs><linearGradient id="vhg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c.color}"/><stop offset="1" stop-color="${c.accent}"/></linearGradient></defs></svg>
+            <span class="pc" id="bpc">—</span></div>
+        </div>
+        <div class="vh-dock" id="dock"></div>
+        <div class="g vh-bar">
+          <button class="vh-cta" id="primary"><ha-icon id="pic" icon="mdi:play"></ha-icon><span id="ptxt">Démarrer</span></button>
+          <button class="vh-rb" id="pause"><ha-icon icon="mdi:pause"></ha-icon></button>
+          <button class="vh-rb" id="locate"><ha-icon icon="mdi:map-marker"></ha-icon></button>
+          <div class="vh-sep"></div>
+          <button class="vh-big room" id="openrooms"><ha-icon icon="mdi:floor-plan"></ha-icon>Pièces</button>
+          <button class="vh-big" id="openset"><ha-icon icon="mdi:tune-variant"></ha-icon>Réglages</button>
+        </div>
+      </div>
+      <div class="vm-modal" id="m-rooms"><div class="vm-sheet">
+        <div class="vm-sh"><ha-icon style="--mdc-icon-size:26px;color:${c.color}" icon="mdi:floor-plan"></ha-icon>
+          <span class="t">Nettoyer une pièce</span><button class="x" id="x-rooms"><ha-icon icon="mdi:close"></ha-icon></button></div>
+        <div class="vm-rgrid" id="rgrid"></div>
+        <button class="vm-allr" id="allrooms"><ha-icon icon="mdi:home-floor-a"></ha-icon>Nettoyer toute la maison</button>
+      </div></div>
+      <div class="vm-modal" id="m-set"><div class="vm-sheet">
+        <div class="vm-sh"><ha-icon style="--mdc-icon-size:26px;color:${c.color}" icon="mdi:tune-variant"></ha-icon>
+          <span class="t">Réglages</span><button class="x" id="x-set"><ha-icon icon="mdi:close"></ha-icon></button></div>
+        <div class="vm-set" id="setbody"></div>
+      </div></div>`;
+    if (c.panel) { const g = c.bottom_gap != null ? c.bottom_gap : 90; this.style.cssText = `position:fixed;top:8px;left:12px;right:12px;bottom:${g}px;overflow:hidden;z-index:1;`; }
+    const SR = this.shadowRoot, ent = c.entity;
+    SR.getElementById("primary").addEventListener("click", () => {
+      const st = this._st(); const cleaning = st && st.state === "cleaning";
+      this._call("vacuum", cleaning ? "return_to_base" : "start", { entity_id: ent });
+    });
+    SR.getElementById("pause").addEventListener("click", () => this._call("vacuum", "pause", { entity_id: ent }));
+    SR.getElementById("locate").addEventListener("click", () => this._call("vacuum", "locate", { entity_id: ent }));
+    SR.getElementById("openrooms").addEventListener("click", () => this._modal("m-rooms", true));
+    SR.getElementById("openset").addEventListener("click", () => { this._buildSettings(); this._modal("m-set", true); });
+    SR.getElementById("x-rooms").addEventListener("click", () => this._modal("m-rooms", false));
+    SR.getElementById("x-set").addEventListener("click", () => this._modal("m-set", false));
+    ["m-rooms", "m-set"].forEach((id) => SR.getElementById(id).addEventListener("click", (e) => { if (e.target.id === id) this._modal(id, false); }));
+    const rg = SR.getElementById("rgrid");
+    (c.rooms || []).forEach((r) => { const segs = r.segments || (r.segment != null ? [r.segment] : []); const b = document.createElement("button"); b.className = "vm-rt";
+      b.innerHTML = `<span class="rc"><ha-icon icon="${r.icon || "mdi:floor-plan"}"></ha-icon></span>${r.name}`;
+      b.addEventListener("click", () => { this._call("vacuum", "send_command", { entity_id: ent, command: "app_segment_clean", params: [segs] }); this._modal("m-rooms", false); }); rg.appendChild(b); });
+    SR.getElementById("allrooms").addEventListener("click", () => { this._call("vacuum", "start", { entity_id: ent }); this._modal("m-rooms", false); });
+    const dockWrap = SR.getElementById("dock");
+    (c.dock || []).forEach((d) => { const el = document.createElement("div"); el.className = "g vh-dc"; el.dataset.e = d.entity; el.dataset.good = d.good || "off";
+      el.dataset.ok = d.ok_text || "OK"; el.dataset.warn = d.warn_text || "Attention";
+      el.innerHTML = `<span class="ic"><ha-icon icon="${d.icon || "mdi:water"}"></ha-icon></span><div><div class="l">${d.label}</div><div class="v">—</div></div>`; dockWrap.appendChild(el); });
+  }
+  _buildSettings() {
+    const body = this.shadowRoot.getElementById("setbody"); if (!body || body._done) return; body._done = true;
+    (this._config.settings || []).forEach((s) => {
+      const st = this._hass.states[s.entity]; if (!st) return; const dom = s.entity.split(".")[0];
+      const row = document.createElement("div"); row.className = "vm-srow";
+      row.innerHTML = `<div class="sl"><ha-icon icon="${s.icon || "mdi:cog"}"></ha-icon>${s.label || st.attributes.friendly_name || s.entity}</div>`;
+      if (dom === "select") {
+        const wrap = document.createElement("div"); wrap.className = "vm-opts";
+        (st.attributes.options || []).forEach((o) => { const b = document.createElement("button"); b.className = "vm-opt"; b.dataset.e = s.entity; b.dataset.v = o;
+          b.textContent = (s.labels && s.labels[o]) || o; b.addEventListener("click", () => this._call("select", "select_option", { entity_id: s.entity, option: o })); wrap.appendChild(b); });
+        row.appendChild(wrap);
+      } else if (dom === "switch") {
+        const b = document.createElement("button"); b.className = "vm-tog"; b.dataset.e = s.entity; b.textContent = "—";
+        b.addEventListener("click", () => this._call("switch", "toggle", { entity_id: s.entity })); row.appendChild(b);
+      } else if (dom === "number") {
+        const wrap = document.createElement("div"); wrap.className = "vm-rng";
+        const inp = document.createElement("input"); inp.type = "range"; inp.dataset.e = s.entity;
+        inp.min = st.attributes.min != null ? st.attributes.min : 0; inp.max = st.attributes.max != null ? st.attributes.max : 100; inp.step = st.attributes.step || 1;
+        const v = document.createElement("span"); v.className = "rv"; v.dataset.ev = s.entity;
+        inp.addEventListener("change", () => this._call("number", "set_value", { entity_id: s.entity, value: parseFloat(inp.value) }));
+        inp.addEventListener("input", () => { v.textContent = inp.value; }); wrap.appendChild(inp); wrap.appendChild(v); row.appendChild(wrap);
+      } else {
+        const d = document.createElement("div"); d.className = "vm-opt on"; d.style.cursor = "default"; d.dataset.disp = s.entity; d.textContent = "—"; row.appendChild(d);
+      }
+      body.appendChild(row);
+    });
+    this._syncSettings();
+  }
+  _syncSettings() {
+    const SR = this.shadowRoot;
+    SR.querySelectorAll(".vm-opt[data-e]").forEach((b) => { const st = this._hass.states[b.dataset.e]; b.classList.toggle("on", st && st.state === b.dataset.v); });
+    SR.querySelectorAll(".vm-tog[data-e]").forEach((b) => { const st = this._hass.states[b.dataset.e]; const on = st && st.state === "on"; b.classList.toggle("on", on); b.textContent = on ? "Activé" : "Désactivé"; });
+    SR.querySelectorAll("input[data-e]").forEach((inp) => { const st = this._hass.states[inp.dataset.e]; if (st && document.activeElement !== inp) inp.value = st.state; });
+    SR.querySelectorAll(".rv[data-ev]").forEach((v) => { const st = this._hass.states[v.dataset.ev]; if (st) v.textContent = st.state; });
+    SR.querySelectorAll("[data-disp]").forEach((d) => { const st = this._hass.states[d.dataset.disp]; if (st) d.textContent = st.state; });
+  }
+  _paintMap() {
+    const me = this._config.map_entity, s = me && this._hass.states[me]; const img = this.shadowRoot && this.shadowRoot.getElementById("map");
+    if (!img) return; const p = s && s.attributes.entity_picture;
+    if (p) { img.src = p; img.hidden = false; const g = this.shadowRoot.getElementById("gridbg"); if (g) g.style.display = "none"; }
+  }
+  _fmt(v, unit) { if (v == null) return "—"; return (Math.round(v * 10) / 10).toString().replace(".", ",") + unit; }
+  _update() {
+    const s = this._st(); if (!s) return; const st = s.state;
+    const running = st === "cleaning" || st === "returning";
+    this.shadowRoot.getElementById("vh").classList.toggle("run", running);
+    this.shadowRoot.getElementById("sic").setAttribute("icon", running ? "mdi:robot-vacuum-variant" : "mdi:robot-vacuum");
+    const area = this._config.area_entity && this._hass.states[this._config.area_entity];
+    const room = (st === "cleaning" && area && !jmaUnavail(area)) ? " · " + area.state : "";
+    this.shadowRoot.getElementById("stxt").textContent = (VACUUM_FR[st] || st) + room;
+    this.shadowRoot.getElementById("sv").textContent = this._fmt(this._num(this._config.surface_entity), " m²");
+    const dur = this._num(this._config.duration_entity);
+    this.shadowRoot.getElementById("dv").textContent = dur == null ? "—" : Math.round(dur) + " min";
+    const tot = this._num(this._config.total_entity);
+    this.shadowRoot.getElementById("tv").textContent = tot == null ? "—" : Math.round(tot);
+    const bv = this._num(this._config.battery_entity);
+    if (bv != null) { this.shadowRoot.getElementById("bring").style.strokeDashoffset = (207.3 * (1 - bv / 100)).toFixed(1); this.shadowRoot.getElementById("bpc").textContent = Math.round(bv) + "%"; }
+    const cleaning = st === "cleaning";
+    this.shadowRoot.getElementById("ptxt").textContent = cleaning ? "Retour base" : "Démarrer";
+    this.shadowRoot.getElementById("pic").setAttribute("icon", cleaning ? "mdi:home-import-outline" : "mdi:play");
+    this.shadowRoot.querySelectorAll(".vh-dc").forEach((el) => { const ds = this._hass.states[el.dataset.e];
+      const ok = ds && ds.state === el.dataset.good; el.classList.toggle("warn", !ok);
+      const vv = el.querySelector(".v"); if (vv) vv.textContent = ok ? el.dataset.ok : el.dataset.warn; });
+    this._syncSettings();
+    this._paintMap();
+  }
+}
+jmaDef("jma-vacuum-hero-card", JmaVacuumHeroCard);
 jmaDef("jma-scene-card", JmaSceneCard);
 jmaDef("jma-alarm-card", JmaAlarmCard);
 
@@ -6115,6 +6371,7 @@ REG("jma-climate-dial-card", "JMA Thermostat cadran", "Climat : cadran rond, gli
 REG("jma-media-card", "JMA Média", "Lecteur média : transport + volume.");
 REG("jma-vacuum-card", "JMA Aspirateur", "Aspirateur : Start / Pause / Dock.");
 REG("jma-vacuum-pro-card", "JMA Aspirateur Pro", "Map plein écran + contrôles flottants + mode actif + pièces.");
+REG("jma-vacuum-hero-card", "JMA Aspirateur Hero", "Map immersive plein écran + HUD flottant en verre + radar live.");
 REG("jma-scene-card", "JMA Scène", "Scène / script : bouton d'activation.");
 REG("jma-alarm-card", "JMA Alarme", "Alarme : Désarmer / Maison / Absent.");
 REG("jma-notify-card", "JMA Notifications", "Notifications persistantes + toasts popup auto.");
