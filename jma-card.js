@@ -15,7 +15,7 @@
  *  Commun: name / icon / color / accent / hold_action(popup|more-info|none)
  */
 
-const VERSION = "1.1.2";
+const VERSION = "1.2.0";
 // enregistrement idempotent : évite qu'un double-chargement de la ressource
 // (HACS + manuel, ou ressource listée 2×) ne fasse planter tout le module.
 const _def = customElements.define.bind(customElements);
@@ -4437,6 +4437,156 @@ class JmaEnergyCard extends HTMLElement {
 jmaDef("jma-energy-card", JmaEnergyCard);
 
 // =============================================================================
+//  🔆 ÉNERGIE "FLOW" — flux Soleil → Maison → Réseau + totaux du jour + prévision
+// =============================================================================
+class JmaEnergyFlowCard extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: "open" }); this._built = false; }
+  setConfig(c) {
+    this._config = { sun: "#f6b73c", grid: "#3b9bff", home: "#2faa52", price: 0.1883, ...c };
+  }
+  getCardSize() { return 8; }
+  static getStubConfig() { return { solar_power: "sensor.solar_power", grid_power: "sensor.grid_power" }; }
+  set hass(h) { this._hass = h; if (!this._built) { this._build(); this._built = true; } this._update(); }
+  _num(key) { const e = this._config[key]; const s = e && this._hass.states[e]; if (!s) return null; const v = parseFloat(s.state); return isNaN(v) ? null : v; }
+  _kw(v) { if (v == null) return "—"; return (Math.round(v * 10) / 10).toString().replace(".", ",") + " kWh"; }
+  _w(v) { if (v == null) return "—"; v = Math.round(v); return v.toLocaleString("fr-FR").replace(/ | /g, " ") + " W"; }
+  _build() {
+    const c = this._config;
+    this.shadowRoot.innerHTML = `<style>
+      :host{display:block;}*{box-sizing:border-box;}
+      .ef{background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.72);border-radius:30px;padding:24px 26px;color:#3a3128;
+        box-shadow:0 14px 44px rgba(120,100,70,.10),inset 0 1px 0 rgba(255,255,255,.6);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+      .ef-h{display:flex;align-items:center;gap:11px;margin-bottom:18px;}
+      .ef-h ha-icon{--mdc-icon-size:26px;color:${c.sun};}
+      .ef-h .t{font-size:1.35rem;font-weight:850;}
+      .ef-h .now{margin-left:auto;font-size:.84rem;font-weight:750;color:#8a7a5c;background:rgba(120,100,70,.08);padding:5px 13px;border-radius:99px;}
+      /* flow row */
+      .ef-flow{display:flex;align-items:center;gap:10px;}
+      .ef-node{flex:none;display:flex;flex-direction:column;align-items:center;gap:8px;width:150px;}
+      .ef-node.home{width:176px;}
+      .ef-ring{position:relative;width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.55);border:2px solid rgba(255,255,255,.7);box-shadow:0 8px 22px rgba(120,100,70,.12);}
+      .ef-node.home .ef-ring{width:118px;height:118px;}
+      .ef-ring ha-icon{--mdc-icon-size:40px;}
+      .ef-node.home .ef-ring ha-icon{--mdc-icon-size:50px;}
+      .ef-sun .ef-ring{border-color:${c.sun}66;background:radial-gradient(circle at 50% 40%,${c.sun}26,rgba(255,255,255,.5));}
+      .ef-sun ha-icon{color:${c.sun};}
+      .ef-grid .ef-ring{border-color:${c.grid}55;background:radial-gradient(circle at 50% 40%,${c.grid}20,rgba(255,255,255,.5));}
+      .ef-grid ha-icon{color:${c.grid};}
+      .ef-home .ef-ring{border-color:${c.home}55;background:radial-gradient(circle at 50% 40%,${c.home}1f,rgba(255,255,255,.55));}
+      .ef-home ha-icon{color:${c.home};}
+      .ef-lbl{font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9a8a6c;}
+      .ef-val{font-size:1.18rem;font-weight:850;}
+      .ef-node.home .ef-val{font-size:1.55rem;}
+      .ef-sub{font-size:.78rem;font-weight:700;color:#8a7a5c;margin-top:-3px;}
+      /* connecting line */
+      .ef-line{flex:1;position:relative;height:5px;border-radius:3px;background:rgba(120,100,70,.12);overflow:hidden;min-width:24px;}
+      .ef-line .fl{position:absolute;inset:0;opacity:0;transition:opacity .4s;
+        background:linear-gradient(90deg,transparent 0%,var(--fc) 50%,transparent 100%);background-size:46px 100%;}
+      .ef-line.on .fl{opacity:1;animation:ef-move 1.3s linear infinite;}
+      .ef-line.rev.on .fl{animation:ef-move-r 1.3s linear infinite;}
+      @keyframes ef-move{from{background-position:-46px 0}to{background-position:46px 0}}
+      @keyframes ef-move-r{from{background-position:46px 0}to{background-position:-46px 0}}
+      /* stat tiles */
+      .ef-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:22px;}
+      .ef-st{background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.62);border-radius:20px;padding:14px 16px;}
+      .ef-st .k{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9a8a6c;display:flex;align-items:center;gap:6px;}
+      .ef-st .k ha-icon{--mdc-icon-size:16px;}
+      .ef-st .v{font-size:1.4rem;font-weight:850;margin-top:5px;}
+      .ef-st .v small{font-size:.8rem;font-weight:800;color:#8a7a5c;}
+      /* autoconso bar */
+      .ef-auto{margin-top:20px;}
+      .ef-auto .row{display:flex;justify-content:space-between;font-size:.8rem;font-weight:800;color:#6a5c45;margin-bottom:7px;}
+      .ef-bar{height:16px;border-radius:99px;overflow:hidden;display:flex;background:rgba(120,100,70,.1);}
+      .ef-bar .s{background:linear-gradient(90deg,${c.sun},#f7c66a);transition:width .5s;}
+      .ef-bar .g{background:linear-gradient(90deg,#5aa9ff,${c.grid});transition:width .5s;}
+      .ef-fc{margin-top:18px;display:flex;align-items:center;gap:10px;font-size:.86rem;font-weight:750;color:#7a6a4c;background:rgba(246,183,60,.12);padding:11px 16px;border-radius:16px;}
+      .ef-fc ha-icon{--mdc-icon-size:20px;color:${c.sun};}
+      .ef-fc b{color:#3a3128;font-weight:850;}
+      @media (max-width:760px){
+        .ef{padding:18px;border-radius:24px;}
+        .ef-flow{flex-wrap:nowrap;gap:4px;}
+        .ef-node{width:auto;}.ef-node.home{width:auto;}
+        .ef-ring{width:64px;height:64px;}.ef-node.home .ef-ring{width:78px;height:78px;}
+        .ef-ring ha-icon{--mdc-icon-size:28px;}.ef-node.home .ef-ring ha-icon{--mdc-icon-size:34px;}
+        .ef-val{font-size:.95rem;}.ef-node.home .ef-val{font-size:1.1rem;}
+        .ef-lbl{font-size:.6rem;}.ef-sub{font-size:.66rem;}
+        .ef-stats{grid-template-columns:repeat(2,1fr);}
+      }
+    </style>
+      <div class="ef">
+        <div class="ef-h"><ha-icon icon="mdi:transmission-tower-import"></ha-icon><span class="t">${c.title || "Énergie"}</span>
+          <span class="now" id="now">—</span></div>
+        <div class="ef-flow">
+          <div class="ef-node ef-sun"><div class="ef-ring"><ha-icon id="sicon" icon="mdi:solar-power-variant"></ha-icon></div>
+            <div class="ef-lbl">Solaire</div><div class="ef-val" id="solp">—</div><div class="ef-sub" id="solt">—</div></div>
+          <div class="ef-line" id="l1" style="--fc:${c.sun}"><div class="fl"></div></div>
+          <div class="ef-node home ef-home"><div class="ef-ring"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon></div>
+            <div class="ef-lbl">Maison</div><div class="ef-val" id="homep">—</div><div class="ef-sub" id="homet">consommation</div></div>
+          <div class="ef-line rev" id="l2" style="--fc:${c.grid}"><div class="fl"></div></div>
+          <div class="ef-node ef-grid"><div class="ef-ring"><ha-icon icon="mdi:transmission-tower"></ha-icon></div>
+            <div class="ef-lbl">Réseau</div><div class="ef-val" id="grdp">—</div><div class="ef-sub" id="grdt">—</div></div>
+        </div>
+        <div class="ef-auto">
+          <div class="row"><span>Autoconsommation du jour</span><span id="autop">—</span></div>
+          <div class="ef-bar"><div class="s" id="bs"></div><div class="g" id="bg"></div></div>
+        </div>
+        <div class="ef-stats">
+          <div class="ef-st"><div class="k"><ha-icon icon="mdi:solar-power" style="color:${c.sun}"></ha-icon>Produit auj.</div><div class="v" id="dprod">—</div></div>
+          <div class="ef-st"><div class="k"><ha-icon icon="mdi:transmission-tower" style="color:${c.grid}"></ha-icon>Réseau auj.</div><div class="v" id="dgrid">—</div></div>
+          <div class="ef-st"><div class="k"><ha-icon icon="mdi:cash" style="color:${c.home}"></ha-icon>Coût estimé</div><div class="v" id="dcost">—</div></div>
+          <div class="ef-st"><div class="k"><ha-icon icon="mdi:counter" style="color:#9a8a6c"></ha-icon>Total solaire</div><div class="v" id="tprod">—</div></div>
+        </div>
+        <div class="ef-fc" id="fc"><ha-icon icon="mdi:weather-sunny"></ha-icon><span id="fctxt">—</span></div>
+      </div>`;
+  }
+  _update() {
+    const c = this._config;
+    const prod = Math.max(0, this._num("solar_power") || 0);
+    const grid = Math.max(0, this._num("grid_power") || 0);    // PAPP (VA) ≈ import maison
+    const home = prod + grid;
+    this.shadowRoot.getElementById("solp").textContent = this._w(prod);
+    this.shadowRoot.getElementById("grdp").textContent = this._w(grid);
+    this.shadowRoot.getElementById("homep").textContent = this._w(home);
+    // instant solar icon (jour/nuit)
+    this.shadowRoot.getElementById("sicon").setAttribute("icon", prod > 5 ? "mdi:solar-power-variant" : "mdi:solar-power-variant-outline");
+    // flow lines
+    this.shadowRoot.getElementById("l1").classList.toggle("on", prod > 5);
+    this.shadowRoot.getElementById("l2").classList.toggle("on", grid > 5);
+    // now badge
+    const cur = this._num("current_entity");
+    this.shadowRoot.getElementById("now").textContent = prod > grid ? "☀️ Solaire dominant" : (cur != null ? `${Math.round(cur)} A` : "Réseau");
+    // today totals
+    const solT = this._num("solar_today"), grT = this._num("grid_today");
+    this.shadowRoot.getElementById("solt").textContent = solT != null ? this._kw(solT) + " auj." : "—";
+    this.shadowRoot.getElementById("grdt").textContent = grT != null ? this._kw(grT) + " auj." : "—";
+    this.shadowRoot.getElementById("dprod").textContent = this._kw(solT);
+    this.shadowRoot.getElementById("dgrid").textContent = this._kw(grT);
+    // autoconso du jour
+    const sp = Math.max(0, solT || 0), gr = Math.max(0, grT || 0), tot = sp + gr;
+    const share = tot > 0 ? Math.round(sp / tot * 100) : 0;
+    this.shadowRoot.getElementById("autop").textContent = (solT != null || grT != null) ? share + "% solaire" : "—";
+    this.shadowRoot.getElementById("bs").style.width = share + "%";
+    this.shadowRoot.getElementById("bg").style.width = (100 - share) + "%";
+    // coût estimé du jour = réseau auj. × prix
+    const cost = grT != null ? grT * c.price : null;
+    this.shadowRoot.getElementById("dcost").innerHTML = cost != null ? (Math.round(cost * 100) / 100).toFixed(2).replace(".", ",") + " <small>€</small>" : "—";
+    // total solaire
+    const tprod = this._num("solar_total");
+    this.shadowRoot.getElementById("tprod").textContent = tprod != null ? Math.round(tprod) + " kWh" : "—";
+    // prévision
+    const fcT = this._num("forecast_today"), fcM = this._num("forecast_tomorrow");
+    const fc = this.shadowRoot.getElementById("fc");
+    if (fcT != null || fcM != null) { fc.style.display = "flex";
+      this.shadowRoot.getElementById("fctxt").innerHTML =
+        `Prévision solaire — aujourd'hui <b>${this._kw(fcT)}</b>${fcM != null ? ` · demain <b>${this._kw(fcM)}</b>` : ""}`;
+    } else fc.style.display = "none";
+  }
+}
+jmaDef("jma-energy-flow-card", JmaEnergyFlowCard);
+
+// =============================================================================
 //  🌤️ MÉTÉO
 // =============================================================================
 const WEATHER_ICON = {
@@ -6463,6 +6613,7 @@ REG("jma-presence-card", "JMA Présence", "Avatars présents/absents (personnes)
 REG("jma-agenda-card", "JMA Agenda", "Événements calendrier, nb de jours configurable.");
 REG("jma-calendar-card", "JMA Calendrier", "Vue mois complète : grille, météo du jour, détail au tap.");
 REG("jma-energy-card", "JMA Énergie", "Conso/production : bleu EDF, rose solaire dominant.");
+REG("jma-energy-flow-card", "JMA Énergie Flux", "Flux Soleil→Maison→Réseau + totaux du jour, coût et prévision.");
 REG("jma-weather-card", "JMA Météo", "Conditions actuelles + prévisions du jour.");
 REG("jma-weather-hero-card", "JMA Météo Hero", "Header météo large, dégradé selon le temps + prévisions.");
 REG("jma-sensor-card", "JMA Capteur", "Valeur + mini-graphe sur la tuile.");
